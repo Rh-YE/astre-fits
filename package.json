@@ -1,6 +1,6 @@
 {
-  "name": "astre-fits",
-  "displayName": "Astre Fits",
+  "name": "test",
+  "displayName": "test",
   "description": "",
   "version": "0.0.1",
   "engines": {
@@ -14,7 +14,7 @@
   "contributes": {
     "commands": [
       {
-        "command": "astre-fits.helloWorld",
+        "command": "test.helloWorld",
         "title": "Hello World"
       }
     ]
