@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FITS 文件查看器</title>
+    <style>
+        :root {
+            --vscode-foreground: var(--vscode-editor-foreground, #cccccc);
+            --vscode-background: var(--vscode-editor-background, #1e1e1e);
+            --vscode-sidebar-background: var(--vscode-sideBar-background, #252526);
+            --vscode-border: var(--vscode-panel-border, #80808059);
+            --vscode-button-background: var(--vscode-button-background, #0e639c);
+            --vscode-button-foreground: var(--vscode-button-foreground, #ffffff);
+            --vscode-button-hoverBackground: var(--vscode-button-hoverBackground, #1177bb);
+            --vscode-input-background: var(--vscode-input-background, #3c3c3c);
+            --vscode-input-foreground: var(--vscode-input-foreground, #cccccc);
+            --vscode-input-border: var(--vscode-input-border, #3c3c3c);
+            --vscode-dropdown-background: var(--vscode-dropdown-background, #3c3c3c);
+            --vscode-dropdown-foreground: var(--vscode-dropdown-foreground, #f0f0f0);
+            --vscode-dropdown-border: var(--vscode-dropdown-border, #3c3c3c);
+            --vscode-panel-background: var(--vscode-panel-background, #1e1e1e);
+            --vscode-panel-border: var(--vscode-panel-border, #80808059);
+            --vscode-tab-activeBackground: var(--vscode-tab-activeBackground, #1e1e1e);
+            --vscode-tab-inactiveBackground: var(--vscode-tab-inactiveBackground, #2d2d2d);
+            --vscode-editor-selectionBackground: var(--vscode-editor-selectionBackground, #264f78);
+            --vscode-list-hoverBackground: var(--vscode-list-hoverBackground, #2a2d2e);
+            --vscode-list-activeSelectionBackground: var(--vscode-list-activeSelectionBackground, #094771);
+            --vscode-list-activeSelectionForeground: var(--vscode-list-activeSelectionForeground, #ffffff);
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', 'HelveticaNeue-Light', 'Ubuntu', 'Droid Sans', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--vscode-background);
+            color: var(--vscode-foreground);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        /* 顶部菜单栏样式 */
+        .menu-bar {
+            display: flex;
+            background-color: var(--vscode-sidebar-background);
+            border-bottom: 1px solid var(--vscode-border);
+            padding: 5px 10px;
+            overflow-x: auto;
+        }
+        
+        .menu-item {
+            padding: 5px 10px;
+            margin-right: 5px;
+            cursor: pointer;
+            border-radius: 2px;
+            color: var(--vscode-foreground);
+            font-size: 13px;
+        }
+        
+        .menu-item:hover {
+            background-color: var(--vscode-list-hoverBackground);
+        }
+        
+        /* 信息显示区样式 */
+        .info-panel {
+            display: flex;
+            padding: 10px;
+            border-bottom: 1px solid var(--vscode-border);
+            background-color: var(--vscode-sidebar-background);
+            font-size: 13px;
+        }
+        
+        .info-left {
+            flex: 3;
+            display: grid;
+            grid-template-columns: auto 1fr;
+            grid-gap: 5px 10px;
+            align-items: center;
+        }
+        
+        .info-middle {
+            flex: 1;
+            padding: 0 10px;
+            border-left: 1px solid var(--vscode-border);
+        }
+        
+        .info-right {
+            flex: 1;
+            padding: 0 10px;
+            border-left: 1px solid var(--vscode-border);
+        }
+        
+        .info-label {
+            font-weight: bold;
+            text-align: right;
+            color: var(--vscode-foreground);
+        }
+        
+        .info-value {
+            text-align: left;
+            background-color: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            padding: 2px 5px;
+            border: 1px solid var(--vscode-input-border);
+            min-height: 1.2em;
+            border-radius: 2px;
+        }
+        
+        /* 缩放控制区样式 */
+        .scale-controls {
+            display: flex;
+            padding: 5px 10px;
+            background-color: var(--vscode-sidebar-background);
+            border-bottom: 1px solid var(--vscode-border);
+            align-items: center;
+            overflow-x: auto;
+        }
+        
+        .scale-button {
+            padding: 3px 8px;
+            margin-right: 5px;
+            cursor: pointer;
+            border: 1px solid var(--vscode-border);
+            border-radius: 2px;
+            background-color: var(--vscode-dropdown-background);
+            color: var(--vscode-dropdown-foreground);
+            font-size: 12px;
+        }
+        
+        .scale-button:hover {
+            background-color: var(--vscode-list-hoverBackground);
+        }
+        
+        .scale-button.active {
+            background-color: var(--vscode-list-activeSelectionBackground);
+            color: var(--vscode-list-activeSelectionForeground);
+            border-color: var(--vscode-list-activeSelectionBackground);
+        }
+        
+        /* 图像显示区样式 */
+        .image-container {
+            flex: 1;
+            overflow: auto;
+            background-color: var(--vscode-panel-background);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+        
+        .image-display {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            display: none;
+        }
+        
+        .image-placeholder {
+            color: var(--vscode-foreground);
+            text-align: center;
+            padding: 20px;
+            background-color: rgba(0, 0, 0, 0.3);
+            border-radius: 3px;
+            max-width: 80%;
+        }
+        
+        /* 原有标签页样式修改 */
+        .tabs {
+            display: none; /* 隐藏原有标签页 */
+        }
+        
+        .tab-content {
+            display: none; /* 隐藏原有内容 */
+        }
+        
+        /* 像素值显示样式 */
+        .pixel-info {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background-color: var(--vscode-dropdown-background);
+            color: var(--vscode-dropdown-foreground);
+            padding: 5px 10px;
+            border-radius: 2px;
+            font-size: 12px;
+            display: none;
+            border: 1px solid var(--vscode-border);
+        }
+        
+        /* 调试信息样式 */
+        .debug-info {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: var(--vscode-dropdown-background);
+            color: var(--vscode-dropdown-foreground);
+            padding: 5px 10px;
+            border-radius: 2px;
+            font-size: 12px;
+            max-width: 300px;
+            max-height: 200px;
+            overflow: auto;
+            z-index: 1000;
+            border: 1px solid var(--vscode-border);
+        }
+        
+        h3 {
+            margin-top: 0;
+            font-size: 14px;
+            color: var(--vscode-foreground);
+        }
+        
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            font-size: 12px;
+        }
+        
+        td {
+            padding: 2px 4px;
+            border-bottom: 1px solid var(--vscode-border);
+        }
+        
+        /* 预览图样式 */
+        .preview-container {
+            flex: 1;
+            padding: 10px;
+            border-left: 1px solid var(--vscode-border);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+        }
+        
+        .preview-canvas {
+            width: 100%;
+            height: 100%;
+            background-color: var(--vscode-panel-background);
+            border: 1px solid var(--vscode-border);
+        }
+        
+        .preview-viewport {
+            position: absolute;
+            border: 2px solid #ff5500;
+            pointer-events: none;
+            box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);
+        }
+        
+        /* 缩放和平移提示 */
+        .zoom-pan-hint {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background-color: var(--vscode-dropdown-background);
+            color: var(--vscode-dropdown-foreground);
+            padding: 5px 10px;
+            border-radius: 2px;
+            font-size: 12px;
+            opacity: 0.8;
+            z-index: 100;
+            border: 1px solid var(--vscode-border);
+        }
+        
+        /* 缩放指示器 */
+        .zoom-indicator {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: var(--vscode-dropdown-background);
+            color: var(--vscode-dropdown-foreground);
+            padding: 5px 10px;
+            border-radius: 2px;
+            font-size: 12px;
+            z-index: 100;
+            border: 1px solid var(--vscode-border);
+        }
+    </style>
+</head>
+<body>
+    <!-- 第一行：顶部菜单栏 -->
+    <div class="menu-bar">
+        <div class="menu-item">File</div>
+        <div class="menu-item">Edit</div>
+        <div class="menu-item">View</div>
+        <div class="menu-item">Frame</div>
+        <div class="menu-item">Bin</div>
+        <div class="menu-item">Zoom</div>
+        <div class="menu-item">Scale</div>
+        <div class="menu-item">Color</div>
+        <div class="menu-item">Region</div>
+        <div class="menu-item">WCS</div>
+        <div class="menu-item">Analysis</div>
+        <div class="menu-item">Help</div>
+    </div>
+    
+    <!-- 第二行：信息显示区 -->
+    <div class="info-panel">
+        <div class="info-left">
+            <div class="info-label">File:</div>
+            <div class="info-value" id="file-value">未加载</div>
+            
+            <div class="info-label">Object:</div>
+            <div class="info-value" id="object-value">未加载</div>
+            
+            <div class="info-label">Value:</div>
+            <div class="info-value" id="pixel-value">-</div>
+            
+            <div class="info-label">WCS:</div>
+            <div class="info-value" id="wcs-value">-</div>
+            
+            <div class="info-label">Physical:</div>
+            <div class="info-value" id="physical-value">-</div>
+            
+            <div class="info-label">Image:</div>
+            <div class="info-value" id="image-coords">-</div>
+            
+            <div class="info-label">Frame:</div>
+            <div class="info-value" id="frame-value">-</div>
+        </div>
+        
+        <div class="preview-container">
+            <h3>预览图</h3>
+            <canvas id="preview-canvas" class="preview-canvas"></canvas>
+            <div id="preview-viewport" class="preview-viewport"></div>
+        </div>
+    </div>
+    
+    <!-- 第三行：缩放控制区 -->
+    <div class="scale-controls">
+        <div class="scale-button active" data-scale="linear">linear</div>
+        <div class="scale-button" data-scale="log">log</div>
+        <div class="scale-button" data-scale="power">power</div>
+        <div class="scale-button" data-scale="sqrt">sqrt</div>
+        <div class="scale-button" data-scale="squared">squared</div>
+        <div class="scale-button" data-scale="asinh">asinh</div>
+        <div class="scale-button" data-scale="sinh">sinh</div>
+        <div class="scale-button" data-scale="histogram">histogram</div>
+        <div class="scale-button" data-scale="minmax">min max</div>
+        <div class="scale-button" data-scale="zscale">zscale</div>
+    </div>
+    
+    <!-- 第四行：图像显示区 -->
+    <div class="image-container">
+        <canvas id="fits-canvas" class="image-display"></canvas>
+        <div id="image-placeholder" class="image-placeholder">加载中...</div>
+        <div id="pixel-info" class="pixel-info"></div>
+        <div id="debug-info" class="debug-info">调试信息：<br>初始化中...</div>
+        <div id="zoom-pan-hint" class="zoom-pan-hint" style="display: none;">滚轮：缩放 | 左键拖动：平移</div>
+        <div id="zoom-indicator" class="zoom-indicator" style="display: none;">缩放: 100%</div>
+    </div>
+
+    <script>
+        // 调试日志函数
+        function log(message) {
+            const debugInfo = document.getElementById('debug-info');
+            const timestamp = new Date().toLocaleTimeString();
+            debugInfo.innerHTML += `<br>${timestamp}: ${message}`;
+            debugInfo.scrollTop = debugInfo.scrollHeight;
+            console.log(message);
+        }
+        
+        log('页面已加载');
+        
+        // 获取当前vscode的webview API
+        const vscode = acquireVsCodeApi();
+        log('已获取vscode API');
+        
+        // 全局变量，存储当前的图像数据
+        let currentImageData = null;
+        let zoomLevel = 1.0;
+        let panOffsetX = 0;
+        let panOffsetY = 0;
+        let isDragging = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+        let lastPanOffsetX = 0;
+        let lastPanOffsetY = 0;
+        
+        // 预览图相关变量
+        let previewCanvas = null;
+        let previewCtx = null;
+        let previewViewport = null;
+        
+        // 初始化缩放按钮
+        document.querySelectorAll('.scale-button').forEach(button => {
+            button.addEventListener('click', () => {
+                // 移除所有活动按钮
+                document.querySelectorAll('.scale-button').forEach(b => b.classList.remove('active'));
+                
+                // 激活当前按钮
+                button.classList.add('active');
+                
+                // 发送缩放类型到扩展
+                const scaleType = button.getAttribute('data-scale');
+                log(`发送缩放类型: ${scaleType}`);
+                vscode.postMessage({
+                    command: 'setScaleType',
+                    scaleType: scaleType
+                });
+            });
+        });
+        
+        // 获取Canvas元素
+        const canvas = document.getElementById('fits-canvas');
+        const ctx = canvas.getContext('2d');
+        log('已获取Canvas上下文');
+        
+        // 获取预览图Canvas
+        previewCanvas = document.getElementById('preview-canvas');
+        previewCtx = previewCanvas.getContext('2d');
+        previewViewport = document.getElementById('preview-viewport');
+        
+        // 图像容器鼠标移动事件，用于显示像素值
+        const imageContainer = document.querySelector('.image-container');
+        const pixelInfo = document.getElementById('pixel-info');
+        const zoomIndicator = document.getElementById('zoom-indicator');
+        
+        // 鼠标滚轮事件 - 缩放
+        imageContainer.addEventListener('wheel', (event) => {
+            event.preventDefault();
+            
+            if (!currentImageData) return;
+            
+            // 计算缩放因子
+            const zoomFactor = event.deltaY < 0 ? 1.1 : 0.9;
+            const newZoomLevel = Math.max(0.1, Math.min(1000, zoomLevel * zoomFactor));
+            
+            // 获取当前视图的中心点
+            const containerWidth = canvas.width;
+            const containerHeight = canvas.height;
+            const centerX = containerWidth / 2;
+            const centerY = containerHeight / 2;
+            
+            // 计算当前中心点在图像上的位置
+            const imageCenterX = (centerX - panOffsetX) / zoomLevel;
+            const imageCenterY = (centerY - panOffsetY) / zoomLevel;
+            
+            // 更新缩放级别
+            zoomLevel = newZoomLevel;
+            
+            // 计算新的偏移量，使视图中心保持不变
+            panOffsetX = centerX - imageCenterX * zoomLevel;
+            panOffsetY = centerY - imageCenterY * zoomLevel;
+            
+            // 更新缩放指示器（虽然已隐藏）
+            zoomIndicator.textContent = `缩放: ${Math.round(zoomLevel * 100)}%`;
+            
+            // 重新渲染图像
+            renderWithTransform();
+            
+            // 更新预览图中的视口
+            updatePreviewViewport();
+        });
+        
+        // 鼠标按下事件 - 开始拖动
+        imageContainer.addEventListener('mousedown', (event) => {
+            if (!currentImageData || event.button !== 0) return;
+            
+            isDragging = true;
+            dragStartX = event.clientX;
+            dragStartY = event.clientY;
+            lastPanOffsetX = panOffsetX;
+            lastPanOffsetY = panOffsetY;
+            
+            // 改变鼠标样式
+            imageContainer.style.cursor = 'grabbing';
+        });
+        
+        // 鼠标移动事件 - 拖动和显示像素值
+        imageContainer.addEventListener('mousemove', (event) => {
+            if (!currentImageData) return;
+            
+            // 获取Canvas的位置和尺寸
+            const rect = canvas.getBoundingClientRect();
+            
+            // 处理拖动
+            if (isDragging) {
+                const deltaX = event.clientX - dragStartX;
+                const deltaY = event.clientY - dragStartY;
+                
+                panOffsetX = lastPanOffsetX + deltaX;
+                panOffsetY = lastPanOffsetY + deltaY;
+                
+                // 重新渲染图像
+                renderWithTransform();
+                
+                // 更新预览图中的视口
+                updatePreviewViewport();
+                return;
+            }
+            
+            // 检查鼠标是否在Canvas上
+            if (event.clientX >= rect.left && event.clientX <= rect.right &&
+                event.clientY >= rect.top && event.clientY <= rect.bottom) {
+                
+                // 计算Canvas上的坐标
+                const canvasX = event.clientX - rect.left;
+                const canvasY = event.clientY - rect.top;
+                
+                // 计算图像上的坐标（考虑缩放和平移）
+                const imageX = Math.floor((canvasX - panOffsetX) / zoomLevel);
+                const imageY = Math.floor((canvasY - panOffsetY) / zoomLevel);
+                
+                // 确保坐标在图像范围内
+                if (imageX >= 0 && imageX < currentImageData.width && imageY >= 0 && imageY < currentImageData.height) {
+                    // 更新坐标显示
+                    document.getElementById('image-coords').textContent = `(${imageX}, ${imageY})`;
+                    
+                    // 发送坐标到扩展获取像素值
+                    vscode.postMessage({
+                        command: 'getPixelValue',
+                        x: imageX,
+                        y: imageY
+                    });
+                }
+            }
+        });
+        
+        // 鼠标抬起事件 - 结束拖动
+        window.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                imageContainer.style.cursor = 'default';
+            }
+        });
+        
+        // 鼠标离开图像容器时隐藏像素信息
+        imageContainer.addEventListener('mouseleave', () => {
+            pixelInfo.style.display = 'none';
+        });
+        
+        // 使用变换渲染图像
+        function renderWithTransform() {
+            if (!currentImageData) return;
+            
+            // 清除Canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 设置Canvas尺寸为容器尺寸
+            const container = imageContainer;
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            
+            // 绘制图像（应用缩放和平移）
+            ctx.save();
+            ctx.translate(panOffsetX, panOffsetY);
+            ctx.scale(zoomLevel, zoomLevel);
+            
+            // 创建ImageData对象
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = currentImageData.width;
+            tempCanvas.height = currentImageData.height;
+            const tempCtx = tempCanvas.getContext('2d');
+            const imageData = tempCtx.createImageData(currentImageData.width, currentImageData.height);
+            
+            // 计算缩放因子
+            const scale = 255 / (currentImageData.max - currentImageData.min);
+            
+            try {
+                // 使用 TypedArray 和向量化操作处理图像数据
+                const pixelCount = currentImageData.width * currentImageData.height;
+                const rgbaData = new Uint8ClampedArray(pixelCount * 4);
+                
+                // 向量化处理 - 一次性计算所有像素值
+                for (let i = 0; i < pixelCount; i++) {
+                    // 计算缩放后的灰度值
+                    const scaledValue = Math.max(0, Math.min(255, Math.round((currentImageData.data[i] - currentImageData.min) * scale)));
+                    
+                    // 设置 RGBA 值 (灰度图像，R=G=B)
+                    const idx = i * 4;
+                    rgbaData[idx] = scaledValue;     // R
+                    rgbaData[idx + 1] = scaledValue; // G
+                    rgbaData[idx + 2] = scaledValue; // B
+                    rgbaData[idx + 3] = 255;         // A
+                }
+                
+                // 直接设置 imageData 的数据
+                imageData.data.set(rgbaData);
+                
+                // 将ImageData绘制到临时Canvas
+                tempCtx.putImageData(imageData, 0, 0);
+                
+                // 将临时Canvas绘制到主Canvas
+                ctx.drawImage(tempCanvas, 0, 0);
+                
+            } catch (error) {
+                log(`渲染图像时出错: ${error.message}`);
+                document.getElementById('image-placeholder').textContent = `渲染图像时出错: ${error.message}`;
+            }
+            
+            ctx.restore();
+        }
+        
+        // 渲染预览图
+        function renderPreview() {
+            if (!currentImageData || !previewCanvas || !previewCtx) return;
+            
+            // 设置预览图Canvas尺寸
+            const container = document.querySelector('.preview-container');
+            const containerWidth = container.clientWidth - 20; // 减去内边距
+            const containerHeight = container.clientHeight - 50; // 减去标题和内边距
+            
+            previewCanvas.width = containerWidth;
+            previewCanvas.height = containerHeight;
+            
+            // 计算缩放比例，使图像适应预览区域
+            const scaleX = containerWidth / currentImageData.width;
+            const scaleY = containerHeight / currentImageData.height;
+            const scale = Math.min(scaleX, scaleY);
+            
+            // 计算居中偏移
+            const offsetX = (containerWidth - currentImageData.width * scale) / 2;
+            const offsetY = (containerHeight - currentImageData.height * scale) / 2;
+            
+            // 清除预览Canvas
+            previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+            
+            // 创建ImageData对象
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = currentImageData.width;
+            tempCanvas.height = currentImageData.height;
+            const tempCtx = tempCanvas.getContext('2d');
+            const imageData = tempCtx.createImageData(currentImageData.width, currentImageData.height);
+            
+            // 计算缩放因子
+            const dataScale = 255 / (currentImageData.max - currentImageData.min);
+            
+            try {
+                // 使用 TypedArray 和向量化操作处理图像数据
+                const pixelCount = currentImageData.width * currentImageData.height;
+                const rgbaData = new Uint8ClampedArray(pixelCount * 4);
+                
+                // 向量化处理 - 一次性计算所有像素值
+                for (let i = 0; i < pixelCount; i++) {
+                    // 计算缩放后的灰度值
+                    const scaledValue = Math.max(0, Math.min(255, Math.round((currentImageData.data[i] - currentImageData.min) * dataScale)));
+                    
+                    // 设置 RGBA 值 (灰度图像，R=G=B)
+                    const idx = i * 4;
+                    rgbaData[idx] = scaledValue;     // R
+                    rgbaData[idx + 1] = scaledValue; // G
+                    rgbaData[idx + 2] = scaledValue; // B
+                    rgbaData[idx + 3] = 255;         // A
+                }
+                
+                // 直接设置 imageData 的数据
+                imageData.data.set(rgbaData);
+                
+                // 将ImageData绘制到临时Canvas
+                tempCtx.putImageData(imageData, 0, 0);
+                
+                // 将临时Canvas绘制到预览Canvas（缩放以适应预览区域）
+                previewCtx.drawImage(tempCanvas, offsetX, offsetY, 
+                                    currentImageData.width * scale, 
+                                    currentImageData.height * scale);
+                
+                // 存储预览图的缩放和偏移信息，用于计算视口位置
+                previewCanvas.dataset.scale = scale;
+                previewCanvas.dataset.offsetX = offsetX;
+                previewCanvas.dataset.offsetY = offsetY;
+                
+                // 更新预览图中的视口
+                updatePreviewViewport();
+                
+            } catch (error) {
+                log(`渲染预览图时出错: ${error.message}`);
+            }
+        }
+        
+        // 更新预览图中的视口
+        function updatePreviewViewport() {
+            if (!currentImageData || !previewCanvas || !previewViewport) return;
+            
+            // 获取预览图的缩放和偏移信息
+            const previewScale = parseFloat(previewCanvas.dataset.scale) || 1;
+            const previewOffsetX = parseFloat(previewCanvas.dataset.offsetX) || 0;
+            const previewOffsetY = parseFloat(previewCanvas.dataset.offsetY) || 0;
+            
+            // 获取主Canvas的尺寸
+            const mainWidth = canvas.width;
+            const mainHeight = canvas.height;
+            
+            // 计算视口在原始图像上的位置
+            const viewportLeft = Math.max(0, -panOffsetX / zoomLevel);
+            const viewportTop = Math.max(0, -panOffsetY / zoomLevel);
+            const viewportRight = Math.min(currentImageData.width, (mainWidth - panOffsetX) / zoomLevel);
+            const viewportBottom = Math.min(currentImageData.height, (mainHeight - panOffsetY) / zoomLevel);
+            
+            // 计算视口在预览图上的位置
+            const vpLeft = viewportLeft * previewScale + previewOffsetX;
+            const vpTop = viewportTop * previewScale + previewOffsetY;
+            const vpWidth = (viewportRight - viewportLeft) * previewScale;
+            const vpHeight = (viewportBottom - viewportTop) * previewScale;
+            
+            // 设置视口样式
+            previewViewport.style.left = `${vpLeft}px`;
+            previewViewport.style.top = `${vpTop}px`;
+            previewViewport.style.width = `${vpWidth}px`;
+            previewViewport.style.height = `${vpHeight}px`;
+            
+            // 显示视口
+            previewViewport.style.display = 'block';
+        }
+        
+        // 预览图点击事件 - 移动视图到点击位置
+        previewCanvas.addEventListener('click', (event) => {
+            // 禁用点击预览图放大功能
+        });
+        
+        // 监听来自扩展的消息
+        window.addEventListener('message', event => {
+            const message = event.data;
+            log(`收到消息: ${message.command}`);
+            
+            switch (message.command) {
+                case 'setFileName':
+                    document.getElementById('file-value').textContent = message.fileName;
+                    break;
+                    
+                case 'setObjectName':
+                    document.getElementById('object-value').textContent = message.objectName || '未知';
+                    break;
+                    
+                case 'setHeaderSummary':
+                    document.getElementById('header-summary').innerHTML = message.html || '无头信息';
+                    break;
+                    
+                case 'setStatsInfo':
+                    document.getElementById('stats-info').innerHTML = message.html || '无统计信息';
+                    break;
+                    
+                case 'setPixelValue':
+                    document.getElementById('pixel-value').textContent = message.value || '-';
+                    document.getElementById('wcs-value').textContent = message.wcs || '-';
+                    document.getElementById('physical-value').textContent = message.physical || '-';
+                    break;
+                    
+                case 'setImageDataFromFile':
+                    log(`收到图像数据文件URI: ${message.fileUri}`);
+                    // 保存当前的缩放和平移状态
+                    const prevZoomLevel = currentImageData ? zoomLevel : null;
+                    const prevPanOffsetX = currentImageData ? panOffsetX : null;
+                    const prevPanOffsetY = currentImageData ? panOffsetY : null;
+                    const prevWidth = currentImageData ? currentImageData.width : null;
+                    const prevHeight = currentImageData ? currentImageData.height : null;
+                    
+                    loadImageDataFromFile(message.fileUri, prevZoomLevel, prevPanOffsetX, prevPanOffsetY, prevWidth, prevHeight);
+                    
+                    // 如果有缩放类型信息，显示临时消息
+                    if (message.fileUri.includes('scaled-data') && message.fileUri.includes('scaleType')) {
+                        // 从URL中提取缩放类型
+                        const scaleTypeMatch = message.fileUri.match(/scaleType%22%3A%22([^%]+)%22/);
+                        if (scaleTypeMatch && scaleTypeMatch[1]) {
+                            showTemporaryMessage(`已应用 ${decodeURIComponent(scaleTypeMatch[1])} 缩放`);
+                        }
+                    }
+                    break;
+                    
+                // 添加对分块数据传输的支持
+                case 'prepareForChunkedData':
+                    log(`准备接收分块数据: 总块数=${message.metadata.totalChunks}, 总长度=${message.metadata.totalLength}`);
+                    prepareForChunkedData(message.metadata);
+                    break;
+                    
+                case 'imageDataChunk':
+                    log(`收到数据块 #${message.chunkIndex}, 偏移量=${message.offset}, 长度=${message.chunk.length}`);
+                    processImageDataChunk(message.chunkIndex, message.chunk, message.offset);
+                    break;
+                    
+                case 'imageDataComplete':
+                    log('所有数据块接收完成，开始渲染图像');
+                    finalizeChunkedData();
+                    break;
+                    
+                case 'setImageData':
+                    if (message.rawData) {
+                        log(`收到图像数据: ${message.rawData.width}x${message.rawData.height}, 数据长度: ${message.rawData.data.length}`);
+                        
+                        // 检查数据大小，如果过大则显示警告
+                        if (message.rawData.data.length > 5000000) {
+                            log(`警告：图像数据非常大 (${message.rawData.data.length} 像素)，渲染可能会变慢`);
+                        }
+                        
+                        // 保存当前的缩放和平移状态
+                        const prevZoomLevel = currentImageData ? zoomLevel : null;
+                        const prevPanOffsetX = currentImageData ? panOffsetX : null;
+                        const prevPanOffsetY = currentImageData ? panOffsetY : null;
+                        const prevWidth = currentImageData ? currentImageData.width : null;
+                        const prevHeight = currentImageData ? currentImageData.height : null;
+                        
+                        // 处理原始像素数据，传递之前的状态
+                        renderImageData(message.rawData, prevZoomLevel, prevPanOffsetX, prevPanOffsetY, prevWidth, prevHeight);
+                        
+                        // 如果有缩放类型信息，显示临时消息
+                        if (message.rawData.scaleType) {
+                            showTemporaryMessage(`已应用 ${message.rawData.scaleType} 缩放`);
+                        }
+                    } else {
+                        // 显示错误信息
+                        log('收到错误信息');
+                        canvas.style.display = 'none';
+                        const imagePlaceholder = document.getElementById('image-placeholder');
+                        imagePlaceholder.style.display = 'block';
+                        
+                        if (message.message) {
+                            imagePlaceholder.textContent = message.message;
+                            log(`错误信息: ${message.message}`);
+                        } else {
+                            imagePlaceholder.textContent = '无法显示图像数据';
+                            log('无法显示图像数据');
+                        }
+                    }
+                    break;
+                    
+                case 'setFrameInfo':
+                    document.getElementById('frame-value').textContent = message.frameInfo || '-';
+                    break;
+            }
+        });
+
+        // 分块数据处理相关变量
+        let chunkedDataMetadata = null;
+        let chunkedDataBuffer = null;
+        let receivedChunks = 0;
+        
+        // 准备接收分块数据
+        function prepareForChunkedData(metadata) {
+            chunkedDataMetadata = metadata;
+            chunkedDataBuffer = new Float32Array(metadata.totalLength);
+            receivedChunks = 0;
+            
+            // 显示加载进度
+            document.getElementById('image-placeholder').textContent = `正在接收图像数据 (0/${metadata.totalChunks})...`;
+            document.getElementById('image-placeholder').style.display = 'block';
+            canvas.style.display = 'none';
+        }
+        
+        // 处理接收到的数据块
+        function processImageDataChunk(chunkIndex, chunkData, offset) {
+            // 将数据块复制到缓冲区
+            for (let i = 0; i < chunkData.length; i++) {
+                chunkedDataBuffer[offset + i] = chunkData[i];
+            }
+            
+            receivedChunks++;
+            
+            // 更新加载进度
+            document.getElementById('image-placeholder').textContent = 
+                `正在接收图像数据 (${receivedChunks}/${chunkedDataMetadata.totalChunks})...`;
+        }
+        
+        // 完成分块数据接收并渲染图像
+        function finalizeChunkedData() {
+            if (!chunkedDataMetadata || !chunkedDataBuffer) {
+                log('错误：没有接收到完整的分块数据');
+                return;
+            }
+            
+            log('所有数据块接收完成，准备渲染图像');
+            
+            // 保存当前的缩放和平移状态
+            const prevZoomLevel = currentImageData ? zoomLevel : null;
+            const prevPanOffsetX = currentImageData ? panOffsetX : null;
+            const prevPanOffsetY = currentImageData ? panOffsetY : null;
+            const prevWidth = currentImageData ? currentImageData.width : null;
+            const prevHeight = currentImageData ? currentImageData.height : null;
+            
+            // 创建完整的数据对象
+            const rawData = {
+                data: chunkedDataBuffer,
+                width: chunkedDataMetadata.width,
+                height: chunkedDataMetadata.height,
+                min: chunkedDataMetadata.min,
+                max: chunkedDataMetadata.max
+            };
+            
+            // 渲染图像，传递之前的状态
+            renderImageData(rawData, prevZoomLevel, prevPanOffsetX, prevPanOffsetY, prevWidth, prevHeight);
+            
+            // 清理缓存
+            chunkedDataMetadata = null;
+            chunkedDataBuffer = null;
+            receivedChunks = 0;
+        }
+
+        // 从二进制文件加载图像数据
+        async function loadImageDataFromFile(fileUri, prevZoomLevel, prevPanOffsetX, prevPanOffsetY, prevWidth, prevHeight) {
+            try {
+                log(`开始从文件加载图像数据: ${fileUri}`);
+                document.getElementById('image-placeholder').textContent = '正在从文件加载图像数据...';
+                
+                // 获取二进制数据
+                const response = await fetch(fileUri);
+                if (!response.ok) {
+                    throw new Error(`HTTP错误: ${response.status}`);
+                }
+                
+                const arrayBuffer = await response.arrayBuffer();
+                log(`已获取二进制数据，大小: ${arrayBuffer.byteLength} 字节`);
+                
+                // 读取头部长度
+                const headerLengthView = new DataView(arrayBuffer, 0, 4);
+                const headerLength = headerLengthView.getUint32(0, true); // 小端字节序
+                
+                // 读取元数据
+                const metadataBytes = new Uint8Array(arrayBuffer, 4, headerLength);
+                const metadataJson = new TextDecoder().decode(metadataBytes);
+                const metadata = JSON.parse(metadataJson);
+                log(`已解析元数据: ${JSON.stringify(metadata)}`);
+                
+                // 读取图像数据
+                const dataStart = 4 + headerLength;
+                const dataBuffer = arrayBuffer.slice(dataStart);
+                const imageData = new Float32Array(dataBuffer);
+                
+                log(`已获取图像数据，长度: ${imageData.length}`);
+                
+                // 创建完整的数据对象 - 直接使用 TypedArray 而不是转换为普通数组
+                const rawData = {
+                    data: imageData,
+                    width: metadata.width,
+                    height: metadata.height,
+                    min: metadata.min,
+                    max: metadata.max
+                };
+                
+                // 渲染图像，传递之前的状态
+                renderImageData(rawData, prevZoomLevel, prevPanOffsetX, prevPanOffsetY, prevWidth, prevHeight);
+                
+            } catch (error) {
+                log(`加载图像数据文件时出错: ${error.message}`);
+                document.getElementById('image-placeholder').textContent = `加载图像数据文件时出错: ${error.message}`;
+                canvas.style.display = 'none';
+                document.getElementById('image-placeholder').style.display = 'block';
+            }
+        }
+
+        // 渲染图像数据到Canvas
+        function renderImageData(rawData, prevZoomLevel, prevPanOffsetX, prevPanOffsetY, prevWidth, prevHeight) {
+            log(`开始渲染图像数据: ${rawData.width}x${rawData.height}`);
+            
+            if (!rawData || !rawData.data || !rawData.width || !rawData.height) {
+                log('图像数据无效');
+                return;
+            }
+            
+            // 保存当前图像数据
+            currentImageData = rawData;
+            
+            // 显示Canvas，隐藏占位符
+            canvas.style.display = 'block';
+            document.getElementById('image-placeholder').style.display = 'none';
+            
+            // 如果是首次加载或缩放类型改变但尺寸不同，则重置视图
+            if (!prevZoomLevel || !prevWidth || !prevHeight || 
+                prevWidth !== rawData.width || prevHeight !== rawData.height) {
+                // 重置缩放和平移
+                zoomLevel = 1.0;
+                panOffsetX = 0;
+                panOffsetY = 0;
+                
+                // 计算初始缩放级别，使图像适应容器
+                const container = imageContainer;
+                const containerWidth = container.clientWidth;
+                const containerHeight = container.clientHeight;
+                
+                const scaleX = containerWidth / rawData.width;
+                const scaleY = containerHeight / rawData.height;
+                zoomLevel = Math.min(scaleX, scaleY);
+                
+                // 居中图像
+                panOffsetX = (containerWidth - rawData.width * zoomLevel) / 2;
+                panOffsetY = (containerHeight - rawData.height * zoomLevel) / 2;
+                
+                log('已重置视图');
+            } else {
+                // 保持之前的缩放和平移状态
+                zoomLevel = prevZoomLevel;
+                panOffsetX = prevPanOffsetX;
+                panOffsetY = prevPanOffsetY;
+                
+                log('已保持之前的视图状态');
+            }
+            
+            // 更新缩放指示器（虽然已隐藏）
+            zoomIndicator.textContent = `缩放: ${Math.round(zoomLevel * 100)}%`;
+            
+            // 使用变换渲染图像
+            renderWithTransform();
+            
+            // 渲染预览图
+            renderPreview();
+            
+            log('已完成图像渲染');
+        }
+
+        // 显示临时消息（1秒后自动消失）
+        function showTemporaryMessage(message) {
+            // 创建或获取消息元素
+            let messageElement = document.getElementById('temp-message');
+            if (!messageElement) {
+                messageElement = document.createElement('div');
+                messageElement.id = 'temp-message';
+                messageElement.style.position = 'absolute';
+                messageElement.style.bottom = '10px';
+                messageElement.style.right = '10px';
+                messageElement.style.backgroundColor = 'var(--vscode-dropdown-background)';
+                messageElement.style.color = 'var(--vscode-dropdown-foreground)';
+                messageElement.style.padding = '5px 10px';
+                messageElement.style.borderRadius = '2px';
+                messageElement.style.fontSize = '12px';
+                messageElement.style.zIndex = '1000';
+                messageElement.style.border = '1px solid var(--vscode-border)';
+                document.body.appendChild(messageElement);
+            }
+            
+            // 设置消息内容
+            messageElement.textContent = message;
+            messageElement.style.display = 'block';
+            
+            // 1秒后自动隐藏
+            setTimeout(() => {
+                messageElement.style.display = 'none';
+            }, 1000);
+        }
+
+        // 通知扩展webview已准备好
+        log('发送webviewReady消息');
+        vscode.postMessage({
+            command: 'webviewReady'
+        });
+    </script>
+</body>
+</html> 
