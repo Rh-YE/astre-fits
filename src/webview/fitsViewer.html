@@ -276,12 +276,30 @@
             z-index: 100;
             border: 1px solid var(--vscode-border);
         }
+        
+        .header-info-container {
+            margin-left: 20px;
+            padding: 10px;
+            border: 1px solid var(--vscode-border);
+            background-color: var(--vscode-sidebar-background);
+            color: var(--vscode-foreground);
+            font-size: 12px;
+            border-radius: 4px;
+        }
+        
+        /* 添加光谱显示的样式 */
+        .spectrum-display {
+            width: 100%;
+            height: 100%;
+            background-color: var(--vscode-panel-background);
+            border: 1px solid var(--vscode-border);
+        }
     </style>
 </head>
 <body>
     <!-- 第一行：顶部菜单栏 -->
     <div class="menu-bar">
-        <div class="menu-item">File</div>
+        <div class="menu-item" id="file-button">File</div>
         <div class="menu-item">Edit</div>
         <div class="menu-item">View</div>
         <div class="menu-item">Frame</div>
@@ -325,6 +343,13 @@
             <canvas id="preview-canvas" class="preview-canvas"></canvas>
             <div id="preview-viewport" class="preview-viewport"></div>
         </div>
+        
+        <div class="header-info-container">
+            <h3>头文件信息</h3>
+            <div style="max-height: 200px; overflow-y: auto;">
+                <pre id="header-info" style="white-space: pre-wrap;">无头文件信息</pre>
+            </div>
+        </div>
     </div>
     
     <!-- 第三行：缩放控制区 -->
@@ -340,16 +365,26 @@
         <div class="scale-button" data-scale="minmax">min max</div>
         <div class="scale-button" data-scale="zscale">zscale</div>
     </div>
+
+    <!-- HDU切换控制栏 -->
+    <div class="scale-controls">
+        <span style="margin-right: 10px; color: var(--vscode-foreground);">HDU: </span>
+        <select id="hdu-selector" style="background-color: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); border: 1px solid var(--vscode-dropdown-border); padding: 3px; border-radius: 2px;">
+            <option value="0">Primary HDU</option>
+        </select>
+    </div>
     
     <!-- 第四行：图像显示区 -->
     <div class="image-container">
         <canvas id="fits-canvas" class="image-display"></canvas>
+        <canvas id="spectrum-canvas" class="spectrum-display" style="display: none;"></canvas>
         <div id="image-placeholder" class="image-placeholder">加载中...</div>
         <div id="pixel-info" class="pixel-info"></div>
         <div id="debug-info" class="debug-info">调试信息：<br>初始化中...</div>
         <div id="zoom-pan-hint" class="zoom-pan-hint" style="display: none;">滚轮：缩放 | 左键拖动：平移</div>
         <div id="zoom-indicator" class="zoom-indicator" style="display: none;">缩放: 100%</div>
     </div>
+
 
     <script>
         // 调试日志函数
@@ -817,6 +852,26 @@
                 case 'setFrameInfo':
                     document.getElementById('frame-value').textContent = message.frameInfo || '-';
                     break;
+                    
+                case 'showHeaderInfo':
+                    // 显示头文件信息
+                    const headerInfo = message.headerInfo;
+                    document.getElementById('header-info').textContent = headerInfo;
+                    break;
+                    
+                case 'setHDUCount':
+                    updateHDUSelector(message.count);
+                    break;
+                    
+                case 'showSpectrum':
+                    // 隐藏图像Canvas，显示光谱Canvas
+                    document.getElementById('fits-canvas').style.display = 'none';
+                    document.getElementById('spectrum-canvas').style.display = 'block';
+                    document.getElementById('image-placeholder').style.display = 'none';
+                    
+                    // 渲染光谱数据
+                    renderSpectrum(message.data, message.wavelength);
+                    break;
             }
         });
 
@@ -1031,6 +1086,221 @@
         vscode.postMessage({
             command: 'webviewReady'
         });
+
+        // HDU切换相关变量和函数
+        let currentHDUIndex = 0;
+        let totalHDUs = 1;
+
+        // 更新HDU选择器选项
+        function updateHDUSelector(hduCount) {
+            const selector = document.getElementById('hdu-selector');
+            selector.innerHTML = ''; // 清空现有选项
+            
+            for (let i = 0; i < hduCount; i++) {
+                const option = document.createElement('option');
+                option.value = i;
+                option.textContent = i === 0 ? 'Primary HDU' : `Extension HDU ${i}`;
+                selector.appendChild(option);
+            }
+            
+            totalHDUs = hduCount;
+        }
+
+        // 监听HDU选择器变化
+        document.getElementById('hdu-selector').addEventListener('change', (event) => {
+            const newHDUIndex = parseInt(event.target.value);
+            if (newHDUIndex !== currentHDUIndex) {
+                currentHDUIndex = newHDUIndex;
+                vscode.postMessage({
+                    command: 'switchHDU',
+                    hduIndex: newHDUIndex
+                });
+            }
+        });
+
+        // 处理光谱数据显示
+        function renderSpectrum(data, wavelength) {
+            const canvas = document.getElementById('spectrum-canvas');
+            const ctx = canvas.getContext('2d');
+            
+            if (!ctx) {
+                console.error('无法获取光谱Canvas上下文');
+                return;
+            }
+
+            // 数据验证
+            if (!Array.isArray(data) || !Array.isArray(wavelength) || data.length === 0 || wavelength.length === 0) {
+                console.error('无效的光谱数据');
+                return;
+            }
+
+            if (data.length !== wavelength.length) {
+                console.error(`数据长度不匹配：flux=${data.length}, wavelength=${wavelength.length}`);
+                return;
+            }
+
+            log(`开始渲染光谱数据，数据点数量：${data.length}`);
+            
+            // 设置Canvas尺寸为容器尺寸
+            const container = document.querySelector('.image-container');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            
+            // 清空画布
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 计算数据范围
+            let minY = Infinity;
+            let maxY = -Infinity;
+            let minX = Infinity;
+            let maxX = -Infinity;
+
+            // 过滤无效值并计算范围
+            const validData = [];
+            for (let i = 0; i < data.length; i++) {
+                if (!isNaN(data[i]) && !isNaN(wavelength[i]) && 
+                    isFinite(data[i]) && isFinite(wavelength[i])) {
+                    validData.push({x: wavelength[i], y: data[i]});
+                    minY = Math.min(minY, data[i]);
+                    maxY = Math.max(maxY, data[i]);
+                    minX = Math.min(minX, wavelength[i]);
+                    maxX = Math.max(maxX, wavelength[i]);
+                }
+            }
+
+            if (validData.length === 0) {
+                console.error('没有有效的数据点');
+                return;
+            }
+
+            log(`有效数据点：${validData.length}，X范围：[${minX}, ${maxX}]，Y范围：[${minY}, ${maxY}]`);
+            
+            // 设置边距
+            const margin = { top: 40, right: 40, bottom: 60, left: 70 };
+            const plotWidth = canvas.width - margin.left - margin.right;
+            const plotHeight = canvas.height - margin.top - margin.bottom;
+            
+            // 添加一些padding到数据范围
+            const rangeY = maxY - minY;
+            const rangeX = maxX - minX;
+            minY -= rangeY * 0.05;
+            maxY += rangeY * 0.05;
+            minX -= rangeX * 0.02;
+            maxX += rangeX * 0.02;
+            
+            // 计算缩放因子
+            const scaleX = plotWidth / (maxX - minX);
+            const scaleY = plotHeight / (maxY - minY);
+            
+            // 绘制背景网格
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 1;
+            
+            // 绘制坐标轴
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+            
+            // X轴
+            ctx.beginPath();
+            ctx.moveTo(margin.left, canvas.height - margin.bottom);
+            ctx.lineTo(canvas.width - margin.right, canvas.height - margin.bottom);
+            ctx.stroke();
+            
+            // Y轴
+            ctx.beginPath();
+            ctx.moveTo(margin.left, margin.top);
+            ctx.lineTo(margin.left, canvas.height - margin.bottom);
+            ctx.stroke();
+            
+            // 绘制刻度和标签
+            ctx.fillStyle = 'white';
+            ctx.font = '12px Arial';
+            
+            // Y轴刻度和网格线
+            const yTicks = 10;
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            for (let i = 0; i <= yTicks; i++) {
+                const y = margin.top + (plotHeight * i) / yTicks;
+                const value = maxY - ((maxY - minY) * i) / yTicks;
+                
+                // 绘制网格线
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+                ctx.beginPath();
+                ctx.moveTo(margin.left, y);
+                ctx.lineTo(canvas.width - margin.right, y);
+                ctx.stroke();
+                
+                // 绘制刻度
+                ctx.fillStyle = 'white';
+                ctx.fillText(value.toExponential(2), margin.left - 10, y);
+            }
+            
+            // X轴刻度和网格线
+            const xTicks = 10;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            for (let i = 0; i <= xTicks; i++) {
+                const x = margin.left + (plotWidth * i) / xTicks;
+                const value = minX + ((maxX - minX) * i) / xTicks;
+                
+                // 绘制网格线
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+                ctx.beginPath();
+                ctx.moveTo(x, margin.top);
+                ctx.lineTo(x, canvas.height - margin.bottom);
+                ctx.stroke();
+                
+                // 绘制刻度
+                ctx.fillStyle = 'white';
+                ctx.fillText(value.toFixed(1), x, canvas.height - margin.bottom + 10);
+            }
+            
+            // 绘制坐标轴标签
+            ctx.font = '14px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('Wavelength', canvas.width / 2, canvas.height - margin.bottom / 3);
+            
+            ctx.save();
+            ctx.translate(margin.left / 3, canvas.height / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText('Flux', 0, 0);
+            ctx.restore();
+            
+            // 绘制数据
+            // 首先绘制连线
+            ctx.strokeStyle = '#4a9eff';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            
+            validData.forEach((point, i) => {
+                const x = margin.left + (point.x - minX) * scaleX;
+                const y = canvas.height - margin.bottom - (point.y - minY) * scaleY;
+                
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+            
+            ctx.stroke();
+            
+            // 如果数据点较少，绘制数据点
+            if (validData.length < 1000) {
+                ctx.fillStyle = '#ff4a4a';
+                validData.forEach(point => {
+                    const x = margin.left + (point.x - minX) * scaleX;
+                    const y = canvas.height - margin.bottom - (point.y - minY) * scaleY;
+                    
+                    ctx.beginPath();
+                    ctx.arc(x, y, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            }
+
+            log('光谱数据渲染完成');
+        }
     </script>
 </body>
 </html> 

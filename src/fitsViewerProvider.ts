@@ -25,6 +25,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider {
     private tempDir: string;
     private fitsCache: Map<string, FITS> = new Map();
     private currentFileUri: vscode.Uri | undefined;
+    private tempFiles: Set<string> = new Set(); // 用于跟踪临时文件
     
     // 分块缓存相关属性
     private chunkSize: number = 250000; // 减小默认块大小为25万像素
@@ -36,11 +37,48 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider {
         private readonly context: vscode.ExtensionContext
     ) {
         console.log('FitsViewerProvider 已创建');
-        // 创建临时目录用于存储生成的图像
-        this.tempDir = path.join(this.context.extensionUri.fsPath, 'temp');
+        // 使用VSCode的全局存储路径作为临时目录
+        this.tempDir = path.join(context.globalStorageUri.fsPath, 'fits-temp');
+        // 确保目录存在
         if (!fs.existsSync(this.tempDir)) {
             fs.mkdirSync(this.tempDir, { recursive: true });
         }
+        
+        // 启动时清理可能存在的旧临时文件
+        this.cleanupTempFiles();
+    }
+
+    // 清理临时文件的方法
+    private cleanupTempFiles(): void {
+        if (fs.existsSync(this.tempDir)) {
+            try {
+                const files = fs.readdirSync(this.tempDir);
+                for (const file of files) {
+                    const filePath = path.join(this.tempDir, file);
+                    fs.unlinkSync(filePath);
+                    console.log(`已删除临时文件: ${filePath}`);
+                }
+                this.tempFiles.clear();
+            } catch (error) {
+                console.error('清理临时文件时出错:', error);
+            }
+        }
+    }
+
+    // 添加临时文件到跟踪列表
+    private trackTempFile(filePath: string): void {
+        this.tempFiles.add(filePath);
+    }
+
+    // 创建临时文件并跟踪
+    private async createTempFile(prefix: string, data: Buffer): Promise<string> {
+        const fileName = `${prefix}-${crypto.randomBytes(8).toString('hex')}.bin`;
+        const filePath = path.join(this.tempDir, fileName);
+        
+        await fs.promises.writeFile(filePath, data);
+        this.trackTempFile(filePath);
+        
+        return filePath;
     }
 
     async openCustomDocument(
@@ -64,7 +102,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider {
             enableScripts: true,
             localResourceRoots: [
                 vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview'),
-                vscode.Uri.joinPath(this.context.extensionUri, 'temp')
+                vscode.Uri.file(this.tempDir)
             ]
         };
         
@@ -86,15 +124,23 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider {
                 case 'setScaleType':
                     this.setScaleType(document.uri, message.scaleType, webviewPanel);
                     break;
+                case 'getHeaderInfo':
+                    this.sendHeaderInfo(document.uri, webviewPanel);
+                    break;
+                case 'switchHDU':
+                    this.switchHDU(document.uri, message.hduIndex, webviewPanel);
+                    break;
             }
         });
         
-        // 当编辑器关闭时清除缓存
+        // 当编辑器关闭时清除缓存和临时文件
         webviewPanel.onDidDispose(() => {
             if (document.uri) {
                 this.clearCache(document.uri);
                 this.currentFileUri = undefined;
-                console.log(`已清除文件缓存: ${document.uri.fsPath}`);
+                // 清理所有临时文件
+                this.cleanupTempFiles();
+                console.log(`已清除文件缓存和临时文件: ${document.uri.fsPath}`);
             }
         });
     }
@@ -135,6 +181,34 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider {
             this.fitsCache.set(uriString, fits);
             this.currentFileUri = fileUri;
             
+            // 识别主HDU类型
+            const primaryHDU = fits.getHDU(0);
+            if (primaryHDU) {
+                const xtension = primaryHDU.header.getItem('XTENSION')?.value;
+                if (xtension) {
+                    const hduType = xtension.trim().toUpperCase();
+                    if (hduType === 'IMAGE') {
+                        console.log('识别到图像数据 (XTENSION IMAGE)');
+                        // 处理图像数据逻辑
+                    } else if (hduType === 'BINTABLE' || hduType === 'TABLE') {
+                        console.log('识别到光谱数据 (' + hduType + ')');
+                        this.processSpectrumData(primaryHDU);
+                    } else {
+                        console.warn('未知的XTENSION类型：' + hduType);
+                    }
+                } else {
+                    // 如果没有XTENSION，则根据NAXIS判断
+                    const naxis = primaryHDU.header.getItem('NAXIS')?.value || 0;
+                    if (naxis >= 2) {
+                        console.log('识别到图像数据 (无XTENSION, NAXIS>=2)');
+                        // 处理图像数据逻辑
+                    } else {
+                        console.log('识别到光谱数据 (无XTENSION, NAXIS<2)');
+                        this.processSpectrumData(primaryHDU);
+                    }
+                }
+            }
+            
             return fits;
         } catch (error) {
             console.error('解析FITS文件时出错:', error);
@@ -159,21 +233,26 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider {
             const timeoutPromise = new Promise<FITS>((_, reject) => {
                 setTimeout(() => {
                     reject(new Error('解析FITS文件超时，文件可能过大或格式不正确'));
-                }, 10000); // 10秒超时
+                }, 10000);
             });
             
             // 等待解析完成或超时
             const fits = await Promise.race([parsePromise, timeoutPromise]);
             console.log('已解析FITS文件');
             
+            // 发送HDU数量到webview
+            webviewPanel.webview.postMessage({
+                command: 'setHDUCount',
+                count: fits.hdus.length
+            });
+            
+            this.sendHeaderInfo(fileUri, webviewPanel);
+            
             if (!fits || !fits.headers || fits.headers.length === 0) {
                 throw new Error('无法解析FITS文件');
             }
             
-            // 获取主头信息
             const primaryHeader = fits.headers[0];
-            
-            // 发送文件名到webview
             const fileName = path.basename(fileUri.fsPath);
             webviewPanel.webview.postMessage({
                 command: 'setFileName',
@@ -181,14 +260,12 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider {
             });
             console.log(`已发送文件名: ${fileName}`);
             
-            // 从FITS头信息中获取对象名称
             const objectName = primaryHeader.getItem('OBJECT')?.value || '未知对象';
             webviewPanel.webview.postMessage({
                 command: 'setObjectName',
                 objectName: objectName
             });
             
-            // 构建头信息摘要
             let headerSummary = '<table style="width:100%">';
             const keyItems = ['BITPIX', 'NAXIS', 'NAXIS1', 'NAXIS2', 'DATE-OBS', 'EXPTIME', 'TELESCOP', 'INSTRUME'];
             
@@ -701,10 +778,6 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider {
             
             // 优化数据传输 - 使用二进制传输而不是JSON序列化
             try {
-                // 创建一个临时文件来存储缩放后的图像数据
-                const tempFileName = `scaled-data-${crypto.randomBytes(8).toString('hex')}.bin`;
-                const tempFilePath = path.join(this.tempDir, tempFileName);
-                
                 // 创建一个包含元数据的头部
                 const metadataBuffer = Buffer.from(JSON.stringify({
                     width: width,
@@ -721,18 +794,11 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider {
                 // 将Float32Array转换为Buffer
                 const dataBuffer = Buffer.from(scaledData.buffer);
                 
-                // 将所有数据写入临时文件
-                const fileStream = fs.createWriteStream(tempFilePath);
-                fileStream.write(headerLengthBuffer);
-                fileStream.write(metadataBuffer);
-                fileStream.write(dataBuffer);
-                fileStream.end();
+                // 创建完整的数据Buffer
+                const fullBuffer = Buffer.concat([headerLengthBuffer, metadataBuffer, dataBuffer]);
                 
-                // 等待文件写入完成
-                await new Promise<void>((resolve, reject) => {
-                    fileStream.on('finish', resolve);
-                    fileStream.on('error', reject);
-                });
+                // 创建临时文件并获取路径
+                const tempFilePath = await this.createTempFile('scaled-data', fullBuffer);
                 
                 console.log(`已将缩放数据写入临时文件: ${tempFilePath}`);
                 
@@ -818,6 +884,27 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider {
         }
     }
     
+    private async sendHeaderInfo(fileUri: vscode.Uri, webviewPanel: vscode.WebviewPanel, hduIndex: number = 0): Promise<void> {
+        try {
+            const fits = await this.getFITS(fileUri);
+            const hdu = fits.getHDU(hduIndex);
+            if (!hdu) {
+                throw new Error(`无法获取HDU ${hduIndex}`);
+            }
+            const headerInfo = hdu.header.getAllItems().map(item => `${item.key}: ${item.value}`).join('\n');
+            webviewPanel.webview.postMessage({
+                command: 'showHeaderInfo',
+                headerInfo: headerInfo
+            });
+        } catch (error) {
+            console.error('获取头文件信息时出错:', error);
+            webviewPanel.webview.postMessage({
+                command: 'showHeaderInfo',
+                headerInfo: '无法获取头文件信息'
+            });
+        }
+    }
+    
     // 当编辑器关闭时清除缓存
     private clearCache(fileUri: vscode.Uri): void {
         const uriString = fileUri.toString();
@@ -825,5 +912,267 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider {
         this.processedChunksCache.delete(uriString);
         this.statsCache.delete(uriString);
         console.log(`已清除文件缓存: ${fileUri.fsPath}`);
+    }
+
+    // 修改 processSpectrumData 方法，不在扩展端直接处理光谱数据，而是由 webview 端处理
+    private processSpectrumData(primaryHDU: any): void {
+        console.log('光谱数据由 webview 处理。请确保 webview 接收到相应消息。');
+        // 如有需要，可以通过其他渠道将数据传输到 webview，由 webview JS 代码进行渲染
+    }
+
+    // 添加处理HDU切换的方法
+    private async switchHDU(fileUri: vscode.Uri, hduIndex: number, webviewPanel: vscode.WebviewPanel): Promise<void> {
+        try {
+            const fits = await this.getFITS(fileUri);
+            const hdu = fits.getHDU(hduIndex);
+            
+            if (!hdu) {
+                throw new Error(`无法获取HDU ${hduIndex}`);
+            }
+
+            this.sendHeaderInfo(fileUri, webviewPanel, hduIndex);
+            
+            if (hdu.data) {
+                const xtension = hdu.header.getItem('XTENSION')?.value;
+                if (xtension) {
+                    const hduType = xtension.trim().toUpperCase();
+                    if (hduType === 'IMAGE') {
+                        console.log('检测到图像数据 (XTENSION IMAGE)');
+                        const width = hdu.header.getItem('NAXIS1')?.value || 0;
+                        const height = hdu.header.getItem('NAXIS2')?.value || 0;
+                        // 计算统计信息
+                        let min = Number.MAX_VALUE;
+                        let max = Number.MIN_VALUE;
+                        for (let i = 0; i < hdu.data.length; i++) {
+                            min = Math.min(min, hdu.data[i]);
+                            max = Math.max(max, hdu.data[i]);
+                        }
+                        webviewPanel.webview.postMessage({
+                            command: 'setImageData',
+                            rawData: {
+                                data: Array.from(hdu.data),
+                                width: width,
+                                height: height,
+                                min: min,
+                                max: max
+                            }
+                        });
+                    } else if (hduType === 'BINTABLE' || hduType === 'TABLE') {
+                        console.log('检测到光谱数据 (' + hduType + ')');
+                        
+                        // 获取列格式信息
+                        const naxis2 = hdu.header.getItem('NAXIS2')?.value || 0;
+                        const tfields = hdu.header.getItem('TFIELDS')?.value || 0;
+                        const actualRows = naxis2;
+                        
+                        console.log(`NAXIS2 = ${naxis2}, TFIELDS = ${tfields}`);
+                        
+                        // 获取列格式
+                        const columnFormats = [];
+                        for (let i = 1; i <= tfields; i++) {
+                            const tform = hdu.header.getItem(`TFORM${i}`)?.value;
+                            if (tform) {
+                                columnFormats.push(tform);
+                            }
+                        }
+                        
+                        console.log('列格式:', columnFormats);
+                        console.log('原始数据长度:', hdu.data.length);
+                        console.log('前20个数据点:', hdu.data.slice(0, 20));
+                        
+                        // 获取波长数组
+                        const wavelengthColumn = columnFormats ? columnFormats[0] : null;
+                        const fluxColumn = columnFormats ? columnFormats[1] : null;
+                        
+                        console.log(`波长列格式: ${wavelengthColumn}, 流量列格式: ${fluxColumn}`);
+                        
+                        if (wavelengthColumn && fluxColumn) {
+                            // 计算每列的字节大小
+                            const wavelengthSize = wavelengthColumn === 'D' ? 8 : 4;  // D = 8字节, E = 4字节
+                            const fluxSize = fluxColumn === 'D' ? 8 : 4;
+                            const rowSize = wavelengthSize + fluxSize;
+                            
+                            console.log(`每行大小: ${rowSize} 字节 (波长: ${wavelengthSize}, 流量: ${fluxSize})`);
+                            
+                            // 创建原始的ArrayBuffer并复制数据
+                            const buffer = new ArrayBuffer(hdu.data.length * 4); // Float32Array中每个元素4字节
+                            const tempView = new Float32Array(buffer);
+                            tempView.set(hdu.data);
+                            
+                            // 使用DataView来正确读取不同类型的数据
+                            const dataView = new DataView(buffer);
+                            const wavelengthData = new Float32Array(actualRows);
+                            const fluxData = new Float32Array(actualRows);
+                            
+                            // 初始化最大最小值
+                            let minFlux = Number.MAX_VALUE;
+                            let maxFlux = Number.MIN_VALUE;
+                            let minWavelength = Number.MAX_VALUE;
+                            let maxWavelength = Number.MIN_VALUE;
+                            
+                            try {
+                                // 输出一些调试信息
+                                console.log(`数据总字节数: ${buffer.byteLength}`);
+                                console.log(`预期总行数: ${actualRows}`);
+                                console.log(`每行字节数: ${rowSize}`);
+                                console.log(`预期总字节数: ${actualRows * rowSize}`);
+                                
+                                for (let i = 0; i < actualRows; i++) {
+                                    const rowOffset = i * rowSize;
+                                    
+                                    // 检查是否超出范围
+                                    if (rowOffset + rowSize > buffer.byteLength) {
+                                        console.warn(`警告：在第 ${i} 行时达到数据边界，提前结束处理`);
+                                        break;
+                                    }
+                                    
+                                    // 读取波长值（D格式 = Float64）
+                                    const wavelength = wavelengthColumn === 'D' 
+                                        ? dataView.getFloat64(rowOffset, false)  // false表示大端字节序
+                                        : dataView.getFloat32(rowOffset, false);
+                                    
+                                    // 读取流量值（E格式 = Float32）
+                                    const flux = fluxColumn === 'D'
+                                        ? dataView.getFloat64(rowOffset + wavelengthSize, false)
+                                        : dataView.getFloat32(rowOffset + wavelengthSize, false);
+                                    
+                                    // 检查数值是否有效
+                                    if (!isNaN(wavelength) && !isNaN(flux) && isFinite(wavelength) && isFinite(flux)) {
+                                        wavelengthData[i] = wavelength;
+                                        fluxData[i] = flux;
+                                        
+                                        // 更新最大最小值
+                                        minWavelength = Math.min(minWavelength, wavelength);
+                                        maxWavelength = Math.max(maxWavelength, wavelength);
+                                        minFlux = Math.min(minFlux, flux);
+                                        maxFlux = Math.max(maxFlux, flux);
+                                    } else {
+                                        console.warn(`警告：第 ${i} 行包含无效数据：wavelength=${wavelength}, flux=${flux}`);
+                                    }
+                                    
+                                    // 每处理10万行输出一次进度
+                                    if (i % 100000 === 0) {
+                                        console.log(`处理进度: ${((i / actualRows) * 100).toFixed(1)}%`);
+                                    }
+                                }
+                                
+                                console.log('光谱数据处理完成:');
+                                console.log(`实际行数: ${actualRows}`);
+                                console.log(`波长数据前10个值: ${wavelengthData.slice(0, 10)}`);
+                                console.log(`流量数据前10个值: ${fluxData.slice(0, 10)}`);
+                                console.log(`波长范围: ${minWavelength} - ${maxWavelength} Å`);
+                                console.log(`流量范围: ${minFlux} - ${maxFlux}`);
+                                
+                                // 检查数据是否有效
+                                if (isNaN(minWavelength) || isNaN(maxWavelength) || isNaN(minFlux) || isNaN(maxFlux)) {
+                                    throw new Error('数据处理结果包含无效值');
+                                }
+                                
+                                webviewPanel.webview.postMessage({
+                                    command: 'showSpectrum',
+                                    data: {
+                                        wavelength: Array.from(wavelengthData),
+                                        flux: Array.from(fluxData),
+                                        wavelengthRange: [minWavelength, maxWavelength],
+                                        fluxRange: [minFlux, maxFlux]
+                                    }
+                                });
+                            } catch (error) {
+                                console.error('处理光谱数据时出错:', error);
+                                throw error;
+                            }
+                        } else {
+                            console.warn('未找到波长或流量列');
+                            webviewPanel.webview.postMessage({
+                                command: 'showSpectrum',
+                                data: {
+                                    wavelength: Array.from({ length: hdu.data.length }, (_, i) => i),
+                                    flux: Array.from(hdu.data)
+                                }
+                            });
+                        }
+                    } else {
+                        console.warn('未知的XTENSION类型：' + hduType + '，按默认逻辑处理');
+                        const naxis = hdu.header.getItem('NAXIS')?.value || 0;
+                        const naxis1 = hdu.header.getItem('NAXIS1')?.value || 0;
+                        const naxis2 = hdu.header.getItem('NAXIS2')?.value || 0;
+                        if (naxis === 1 || (naxis === 2 && (naxis1 === 1 || naxis2 === 1))) {
+                            console.log('默认检测到光谱数据');
+                            webviewPanel.webview.postMessage({
+                                command: 'showSpectrum',
+                                data: Array.from(hdu.data),
+                                wavelength: Array.from({ length: hdu.data.length }, (_, i) => i)
+                            });
+                        } else {
+                            console.log('默认检测到图像数据');
+                            const width = naxis1;
+                            const height = naxis2;
+                            let min = Number.MAX_VALUE;
+                            let max = Number.MIN_VALUE;
+                            for (let i = 0; i < hdu.data.length; i++) {
+                                min = Math.min(min, hdu.data[i]);
+                                max = Math.max(max, hdu.data[i]);
+                            }
+                            webviewPanel.webview.postMessage({
+                                command: 'setImageData',
+                                rawData: {
+                                    data: Array.from(hdu.data),
+                                    width: width,
+                                    height: height,
+                                    min: min,
+                                    max: max
+                                }
+                            });
+                        }
+                    }
+                } else {
+                    // 如果没有XTENSION，根据NAXIS判断
+                    const naxis = hdu.header.getItem('NAXIS')?.value || 0;
+                    const naxis1 = hdu.header.getItem('NAXIS1')?.value || 0;
+                    const naxis2 = hdu.header.getItem('NAXIS2')?.value || 0;
+                    if (naxis === 1 || (naxis === 2 && (naxis1 === 1 || naxis2 === 1))) {
+                        console.log('默认检测到光谱数据 (无XTENSION)');
+                        webviewPanel.webview.postMessage({
+                            command: 'showSpectrum',
+                            data: Array.from(hdu.data),
+                            wavelength: Array.from({ length: hdu.data.length }, (_, i) => i)
+                        });
+                    } else {
+                        console.log('默认检测到图像数据 (无XTENSION)');
+                        const width = naxis1;
+                        const height = naxis2;
+                        let min = Number.MAX_VALUE;
+                        let max = Number.MIN_VALUE;
+                        for (let i = 0; i < hdu.data.length; i++) {
+                            min = Math.min(min, hdu.data[i]);
+                            max = Math.max(max, hdu.data[i]);
+                        }
+                        webviewPanel.webview.postMessage({
+                            command: 'setImageData',
+                            rawData: {
+                                data: Array.from(hdu.data),
+                                width: width,
+                                height: height,
+                                min: min,
+                                max: max
+                            }
+                        });
+                    }
+                }
+            } else {
+                webviewPanel.webview.postMessage({
+                    command: 'setImageData',
+                    rawData: null,
+                    message: '当前HDU不包含数据'
+                });
+            }
+        } catch (error) {
+            console.error('切换HDU时出错:', error);
+            webviewPanel.webview.postMessage({
+                command: 'setImageData',
+                rawData: null,
+                message: `切换HDU失败: ${error instanceof Error ? error.message : String(error)}`
+            });
+        }
     }
 } 
