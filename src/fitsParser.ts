@@ -3,6 +3,8 @@
  * 用于解析FITS文件并提取头信息和数据
  */
 
+import { HDUType, TableData } from './models/FITSDataManager';
+
 // 常量定义
 const READONLY = 0;
 const READWRITE = 1;
@@ -16,7 +18,7 @@ const NOT_FITS = 108;      // 错误代码：非FITS文件
 const FITS_BLOCK_SIZE = 2880; // FITS块大小
 
 // FITS文件类型
-export enum HDUType {
+enum FITSHDUType {
     IMAGE_HDU = 0,
     ASCII_TBL = 1,
     BINARY_TBL = 2
@@ -573,7 +575,6 @@ export class FITSParser {
         console.log('开始解析二进制表格数据');
         console.log('数据起始偏移量:', offset);
         console.log('可用字节数:', availableBytes);
-        console.log('头信息项:', header.getAllItems());
         
         const naxis1 = header.getItem('NAXIS1')?.value;
         const naxis2 = header.getItem('NAXIS2')?.value;
@@ -585,21 +586,31 @@ export class FITSParser {
             console.error('二进制表格缺少必要的头信息');
             return new Float32Array(0);
         }
+
+        // 解析列信息
+        const columns = new Map<string, {
+            name: string;
+            format: string;
+            unit: string;
+            dataType: string;
+            repeatCount: number;
+            byteOffset: number;
+            byteSize: number;
+            data: Float32Array | Float64Array | Int8Array | Int16Array | Int32Array;
+        }>();
+
+        let currentOffset = 0;
         
-        // 解析所有字段的格式
-        const columnFormats = [];
-        let totalRowSize = 0;
-        
+        // 首先收集所有列的信息
         for (let i = 1; i <= tfields; i++) {
             const tform = header.getItem(`TFORM${i}`)?.value;
-            const ttype = header.getItem(`TTYPE${i}`)?.value;
+            const ttype = header.getItem(`TTYPE${i}`)?.value || `COL${i}`;
+            const tunit = header.getItem(`TUNIT${i}`)?.value || '';
             
             if (!tform) {
                 console.error(`缺少TFORM${i}定义`);
                 continue;
             }
-            
-            console.log(`列 ${i}: TFORM=${tform}, TTYPE=${ttype}`);
             
             // 解析TFORM格式：rTa
             const match = tform.match(/^(\d*)([A-Z])/);
@@ -611,136 +622,125 @@ export class FITSParser {
             const repeatCount = match[1] ? parseInt(match[1]) : 1;
             const dataType = match[2];
             
-            // 确定数据类型的字节大小
-            let byteSize;
+            // 确定数据类型的字节大小和对应的TypedArray
+            let byteSize: number;
+            let ArrayType: any;
+            
             switch (dataType) {
-                case 'L': byteSize = 1; break;  // Logical
-                case 'B': byteSize = 1; break;  // Unsigned byte
-                case 'I': byteSize = 2; break;  // 16-bit integer
-                case 'J': byteSize = 4; break;  // 32-bit integer
-                case 'K': byteSize = 8; break;  // 64-bit integer
-                case 'E': byteSize = 4; break;  // 32-bit floating point
-                case 'D': byteSize = 8; break;  // 64-bit floating point
-                case 'C': byteSize = 8; break;  // Complex (2*4 bytes)
-                case 'M': byteSize = 16; break; // Double complex (2*8 bytes)
-                case 'A': byteSize = 1; break;  // Character
+                case 'B':  // Unsigned byte
+                    byteSize = 1;
+                    ArrayType = Int8Array;
+                    break;
+                case 'I':  // 16-bit integer
+                    byteSize = 2;
+                    ArrayType = Int16Array;
+                    break;
+                case 'J':  // 32-bit integer
+                    byteSize = 4;
+                    ArrayType = Int32Array;
+                    break;
+                case 'E':  // 32-bit floating point
+                    byteSize = 4;
+                    ArrayType = Float32Array;
+                    break;
+                case 'D':  // 64-bit floating point
+                    byteSize = 8;
+                    ArrayType = Float64Array;
+                    break;
                 default:
-                    console.error(`不支持的数据类型: ${dataType}`);
+                    console.warn(`不支持的数据类型: ${dataType}`);
                     continue;
             }
-            
-            // 计算该字段的总字节数：重复计数 * 字节大小
-            const fieldSize = repeatCount * byteSize;
-            console.log(`字段${i}大小计算: ${repeatCount} * ${byteSize} = ${fieldSize} 字节`);
-            
-            columnFormats.push({
-                index: i,
+
+            // 为每列创建适当大小的数组
+            const arraySize = naxis2 * repeatCount;
+            const columnData = new ArrayType(arraySize);
+
+            columns.set(ttype, {
+                name: ttype,
                 format: tform,
+                unit: tunit,
                 dataType,
-                byteSize,
                 repeatCount,
-                offset: totalRowSize,
-                size: fieldSize
+                byteOffset: currentOffset,
+                byteSize,
+                data: columnData
             });
-            
-            // 累加行大小
-            totalRowSize += fieldSize;
+
+            currentOffset += byteSize * repeatCount;
         }
-        
-        console.log(`计算得到的每行总字节数: ${totalRowSize}`);
-        if (totalRowSize !== naxis1) {
-            console.warn(`警告：计算的行大小(${totalRowSize})与NAXIS1(${naxis1})不匹配`);
-        }
-        
-        // 确保数据缓冲区足够大
-        const totalDataSize = naxis2 * naxis1;
-        console.log(`总数据大小: ${totalDataSize} 字节`);
-        
-        if (totalDataSize > availableBytes) {
-            console.error(`错误：数据大小(${totalDataSize})超出可用字节数(${availableBytes})`);
-            return new Float32Array(0);
-        }
-        
-        // 创建结果数组
-        const firstColumn = columnFormats[0];
-        if (!firstColumn) {
-            console.error('没有找到第一列的格式信息');
-            return new Float32Array(0);
-        }
-        
-        const resultSize = naxis2 * firstColumn.repeatCount;
-        console.log(`创建结果数组，大小: ${resultSize}`);
-        const result = new Float32Array(resultSize);
-        
+
         try {
-            console.log('开始读取数据...');
-            console.log(`- 数据起始位置: ${offset}`);
-            console.log(`- 每行字节数: ${naxis1}`);
-            console.log(`- 总行数: ${naxis2}`);
-            console.log(`- 第一列重复次数: ${firstColumn.repeatCount}`);
-            console.log(`- 第一列字节大小: ${firstColumn.byteSize}`);
-            
-            // 遍历每一行
+            // 读取每一行的数据
             for (let row = 0; row < naxis2; row++) {
                 const rowStart = offset + row * naxis1;
-                
-                // 边界检查
-                if (rowStart + naxis1 > offset + availableBytes) {
-                    console.error(`行起始位置(${rowStart})超出可用范围(${offset + availableBytes})`);
-                    break;
-                }
-                
-                // 读取该字段的所有重复值
-                for (let r = 0; r < firstColumn.repeatCount; r++) {
-                    const valueOffset = rowStart + firstColumn.offset + r * firstColumn.byteSize;
-                    
-                    // 边界检查
-                    if (valueOffset + firstColumn.byteSize > offset + availableBytes) {
-                        console.error(`值偏移量(${valueOffset})超出可用范围(${offset + availableBytes})`);
-                        break;
-                    }
-                    
-                    this.buffer.seek(valueOffset);
-                    let value: number;
-                    
-                    try {
-                        switch (firstColumn.dataType) {
-                            case 'D': value = this.buffer.readFloat64(); break;
-                            case 'E': value = this.buffer.readFloat32(); break;
-                            case 'J': value = this.buffer.readInt32(); break;
-                            case 'I': value = this.buffer.readInt16(); break;
-                            case 'B': value = this.buffer.readInt8(); break;
-                            default: 
-                                console.warn(`不支持的数据类型: ${firstColumn.dataType}`);
-                                value = 0;
-                        }
+
+                // 处理每一列
+                for (const [name, column] of columns) {
+                    const colOffset = rowStart + column.byteOffset;
+                    this.buffer.seek(colOffset);
+
+                    // 读取该列在当前行的所有值
+                    for (let r = 0; r < column.repeatCount; r++) {
+                        const dataIndex = row * column.repeatCount + r;
                         
-                        if (isFinite(value)) {
-                            const resultIndex = row * firstColumn.repeatCount + r;
-                            if (resultIndex < result.length) {
-                                result[resultIndex] = value;
-                            } else {
-                                console.error(`结果索引(${resultIndex})超出数组范围(${result.length})`);
+                        try {
+                            let value: number;
+                            switch (column.dataType) {
+                                case 'D': value = this.buffer.readFloat64(); break;
+                                case 'E': value = this.buffer.readFloat32(); break;
+                                case 'J': value = this.buffer.readInt32(); break;
+                                case 'I': value = this.buffer.readInt16(); break;
+                                case 'B': value = this.buffer.readInt8(); break;
+                                default: value = 0;
                             }
+                            
+                            if (dataIndex < column.data.length) {
+                                column.data[dataIndex] = value;
+                            }
+                        } catch (error) {
+                            console.error(`读取数据出错: 列=${name}, 行=${row}, 重复=${r}`, error);
+                            throw error;
                         }
-                    } catch (error) {
-                        console.error(`读取数据出错: row=${row}, repeat=${r}, offset=${valueOffset}`, error);
-                        throw error;
                     }
                 }
-                
+
                 // 输出进度
-                if (row % 100000 === 0 || row === naxis2 - 1) {
-                    console.log(`处理进度: ${((row / naxis2) * 100).toFixed(1)}%`);
+                if (row % 1000 === 0 || row === naxis2 - 1) {
+                    console.log(`处理进度: ${((row + 1) / naxis2 * 100).toFixed(1)}%`);
                 }
             }
-            
-            console.log('数据读取完成');
-            console.log(`结果数组大小: ${result.length}`);
-            console.log('示例数据:', result.slice(0, 10));
-            
-            return result;
-            
+
+            // 创建表格数据对象
+            const tableData: TableData = {
+                columns: new Map(Array.from(columns.entries()).map(([name, col]) => [
+                    name,
+                    {
+                        name: col.name,
+                        format: col.format,
+                        unit: col.unit,
+                        dataType: col.dataType,
+                        repeatCount: col.repeatCount,
+                        data: col.data
+                    }
+                ])),
+                rowCount: naxis2
+            };
+
+            // 为了保持向后兼容，返回第一列数据
+            const firstColumn = Array.from(columns.values())[0];
+            if (!firstColumn) {
+                return new Float32Array(0);
+            }
+
+            // 输出每列的一些示例数据
+            for (const [name, column] of columns) {
+                console.log(`列 ${name} 的前10个数据:`, Array.from(column.data.slice(0, 10)));
+            }
+
+            // 返回第一列数据（为了保持接口兼容）
+            return new Float32Array(firstColumn.data);
+
         } catch (error) {
             console.error('解析二进制表格数据时出错:', error);
             if (error instanceof Error) {

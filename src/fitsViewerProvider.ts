@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import { FITSParser, FITS } from './fitsParser';
 import * as crypto from 'crypto';
 import { FITSDataManager, HDUType } from './models/FITSDataManager';
+import { LoadingManager } from './models/LoadingManager';
 
 // 定义一个表格字段描述类
 class TableField {
@@ -77,6 +78,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider {
 
     private static readonly viewType = 'astre-fits.fitsViewer';
     private dataManager: FITSDataManager;
+    private loadingManager: LoadingManager;
     private currentFileUri: vscode.Uri | undefined;
 
     constructor(
@@ -84,6 +86,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider {
     ) {
         console.log('FitsViewerProvider 已创建');
         this.dataManager = FITSDataManager.getInstance(context);
+        this.loadingManager = LoadingManager.getInstance();
     }
 
     async openCustomDocument(
@@ -179,29 +182,33 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider {
     }
 
     private async updateWebview(fileUri: vscode.Uri, webviewPanel: vscode.WebviewPanel): Promise<void> {
+        const uriString = fileUri.toString();
+
+        if (this.loadingManager.isLoading(uriString)) {
+            webviewPanel.webview.postMessage({
+                command: 'setImageData',
+                rawData: null,
+                message: '文件正在加载中，请稍候...'
+            });
+            return;
+        }
+
         try {
-            console.log(`开始更新webview，文件: ${fileUri.fsPath}`);
-            
-            // 显示加载消息
             webviewPanel.webview.postMessage({
                 command: 'setImageData',
                 rawData: null,
                 message: '正在解析FITS文件，请稍候...'
             });
             
-            // 加载FITS文件
             const fits = await this.loadFITS(fileUri);
             
-            // 发送HDU数量到webview
             webviewPanel.webview.postMessage({
                 command: 'setHDUCount',
                 count: this.dataManager.getHDUCount(fileUri)
             });
             
-            // 发送头信息
             await this.sendHeaderInfo(fileUri, webviewPanel);
             
-            // 获取主HDU数据
             const hduData = await this.dataManager.getHDUData(fileUri, 0);
             if (!hduData) {
                 throw new Error('无法获取HDU数据');
@@ -443,13 +450,23 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider {
     }
     
     private async switchHDU(fileUri: vscode.Uri, hduIndex: number, webviewPanel: vscode.WebviewPanel): Promise<void> {
+        const uriString = fileUri.toString();
+
+        if (this.loadingManager.isLoading(uriString)) {
+            webviewPanel.webview.postMessage({
+                command: 'setImageData',
+                rawData: null,
+                message: 'HDU切换中，请稍候...'
+            });
+            return;
+        }
+
         try {
             const hduData = await this.dataManager.getHDUData(fileUri, hduIndex);
             if (!hduData) {
                 throw new Error(`无法获取HDU ${hduIndex} 的数据`);
             }
             
-            // 发送头信息
             await this.sendHeaderInfo(fileUri, webviewPanel, hduIndex);
             
             // 根据HDU类型处理数据
