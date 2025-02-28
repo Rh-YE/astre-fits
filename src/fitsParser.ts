@@ -3,6 +3,42 @@
  * 用于解析FITS文件并提取头信息和数据
  */
 
+// 常量定义
+const READONLY = 0;
+const READWRITE = 1;
+const MAX_DIMS = 999;
+const FLEN_KEYWORD = 72;
+const FLEN_VALUE = 72;
+const FLEN_COMMENT = 72;
+const FLEN_CARD = 80;      // 卡片长度
+const MAX_PREFIX_LEN = 20; // 文件类型前缀最大长度
+const NOT_FITS = 108;      // 错误代码：非FITS文件
+const FITS_BLOCK_SIZE = 2880; // FITS块大小
+
+// FITS文件类型
+export enum HDUType {
+    IMAGE_HDU = 0,
+    ASCII_TBL = 1,
+    BINARY_TBL = 2
+}
+
+// 数据类型定义
+enum DataType {
+    BYTE_IMG = 8,
+    SHORT_IMG = 16,
+    LONG_IMG = 32,
+    FLOAT_IMG = -32,
+    DOUBLE_IMG = -64
+}
+
+// 压缩方法
+enum CompressionType {
+    RICE_1 = 11,
+    GZIP_1 = 21,
+    PLIO_1 = 31,
+    HCOMPRESS_1 = 41
+}
+
 // FITS文件头信息项
 export interface FITSHeaderItem {
     key: string;
@@ -36,7 +72,18 @@ export class FITSHeader {
 export class FITSHDU {
     constructor(
         public header: FITSHeader,
-        public data: Float32Array | null = null
+        public data: Float32Array | null = null,
+        public fileInfo: {
+            headerStart: number,    // 头部起始字节位置
+            dataStart: number,      // 数据块起始字节位置
+            dataSize: number,       // 数据大小（包含填充）
+            headerSize: number      // 头部大小（包含填充）
+        } = {
+            headerStart: 0,
+            dataStart: 0,
+            dataSize: 0,
+            headerSize: 0
+        }
     ) {}
 }
 
@@ -56,38 +103,73 @@ export class FITS {
     }
 }
 
-// 基本常量定义
-const FLEN_CARD = 80;      // 卡片长度
-const MAX_PREFIX_LEN = 20; // 文件类型前缀最大长度
-const NOT_FITS = 108;      // 错误代码：非FITS文件
-const FITS_BLOCK_SIZE = 2880; // FITS块大小
+class FitsBuffer {
+    private buffer: ArrayBuffer;
+    private view: DataView;
+    private position: number = 0;
 
-// HDU类型枚举
-export enum HDUType {
-    IMAGE_HDU = 0,
-    ASCII_TBL = 1,
-    BINARY_TBL = 2
-}
+    constructor(buffer: Uint8Array) {
+        this.buffer = buffer.buffer;
+        this.view = new DataView(this.buffer, buffer.byteOffset, buffer.byteLength);
+    }
 
-// FITS文件结构
-interface FITSfile {
-    filehandle: number;
-    driver: number;
-    filename: string;
-    filesize: number;
-    writemode: number;
-    datastart: number;
-    iobuffer: Uint8Array;
-    headstart: number[];
-}
+    public readInt8(): number {
+        const value = this.view.getInt8(this.position);
+        this.position += 1;
+        return value;
+    }
 
-interface Fitsfile {
-    Fptr: FITSfile;
+    public readInt16(): number {
+        const value = this.view.getInt16(this.position, false); // FITS使用大端字节序
+        this.position += 2;
+        return value;
+    }
+
+    public readInt32(): number {
+        const value = this.view.getInt32(this.position, false);
+        this.position += 4;
+        return value;
+    }
+
+    public readFloat32(): number {
+        const value = this.view.getFloat32(this.position, false);
+        this.position += 4;
+        return value;
+    }
+
+    public readFloat64(): number {
+        const value = this.view.getFloat64(this.position, false);
+        this.position += 8;
+        return value;
+    }
+
+    public readString(length: number): string {
+        const bytes = new Uint8Array(this.buffer, this.view.byteOffset + this.position, length);
+        this.position += length;
+        return new TextDecoder().decode(bytes).trim();
+    }
+
+    public seek(position: number): void {
+        this.position = position;
+    }
+
+    public getPosition(): number {
+        return this.position;
+    }
+
+    public getBuffer(): ArrayBuffer {
+        return this.buffer;
+    }
+
+    public getView(): DataView {
+        return this.view;
+    }
 }
 
 // FITS文件解析器
 export class FITSParser {
-    private fptr: Fitsfile | null = null;
+    private buffer: FitsBuffer | null = null;
+    private header: FITSHeader | null = null;
 
     // 解析FITS文件
     parseFITS(buffer: Uint8Array): FITS {
@@ -99,26 +181,20 @@ export class FITSParser {
             throw new Error('无效的FITS文件格式');
         }
         
-        // 初始化Fitsfile结构
-        let status = 0;
-        status = this.ffopen(buffer);
-        if (status > 0) {
+        this.buffer = new FitsBuffer(buffer);
+        
+        // 验证FITS文件头
+        if (!this.validateFITSHeader()) {
             throw new Error('无效的FITS文件格式');
         }
         
-        // 验证HDU类型
-        let hdutype = HDUType.IMAGE_HDU;
-        status = this.ffrhdu(hdutype, status);
-        if (status > 0) {
-            throw new Error('无效的HDU格式');
-        }
-        
+        // 重置偏移量，确保从文件开头开始计算
         let offset = 0;
-        let currentHDUType: HDUType;
+        let currentOffset = 0;  // 用于跟踪实际的文件位置
         
         // 解析主头信息
         console.log('解析主头信息...');
-        const primaryHeader = this.parseHeader(buffer, offset);
+        const primaryHeader = this.parseHeader(offset);
         
         // 验证主HDU
         if (!this.validatePrimaryHDU(primaryHeader)) {
@@ -126,7 +202,6 @@ export class FITSParser {
         }
         
         fits.headers.push(primaryHeader);
-        currentHDUType = HDUType.IMAGE_HDU;
         
         // 计算数据块大小
         const bitpix = primaryHeader.getItem('BITPIX')?.value || 0;
@@ -148,15 +223,18 @@ export class FITSParser {
         console.log(`数据大小: ${dataSize} 字节`);
         
         // 计算头信息块数和数据块数
-        const headerSize = this.findHeaderEnd(buffer, 0);
-        const headerBlocks = Math.ceil(headerSize / 2880);
-        const headerEnd = headerBlocks * 2880;
+        const headerSize = this.findHeaderEnd(offset);
+        const headerBlocks = Math.ceil(headerSize / FITS_BLOCK_SIZE);
+        const headerEnd = headerBlocks * FITS_BLOCK_SIZE;
+        currentOffset = headerEnd;  // 更新当前位置到头部结束
         
         console.log(`头信息大小: ${headerSize} 字节, ${headerBlocks} 个块, 结束于 ${headerEnd}`);
         
         // 计算数据块数并调整偏移量
-        const dataBlocks = Math.ceil(dataSize / 2880);
-        const dataEnd = headerEnd + dataBlocks * 2880;
+        const dataBlocks = Math.ceil(dataSize / FITS_BLOCK_SIZE);
+        const alignedDataSize = dataBlocks * FITS_BLOCK_SIZE;
+        const dataEnd = headerEnd + alignedDataSize;
+        currentOffset = dataEnd;  // 更新当前位置到数据结束
         
         console.log(`数据块数: ${dataBlocks}, 数据结束于 ${dataEnd}`);
         
@@ -164,19 +242,25 @@ export class FITSParser {
         let data: Float32Array | null = null;
         if (dataSize > 0) {
             console.log('解析主数据...');
-            data = this.parseData(buffer, headerEnd, primaryHeader);
+            data = this.parseData(headerEnd, primaryHeader);
         }
         
-        // 创建主HDU
-        const primaryHDU = new FITSHDU(primaryHeader, data);
+        // 创建主HDU，包含文件位置信息
+        const primaryHDU = new FITSHDU(primaryHeader, data, {
+            headerStart: offset,
+            dataStart: headerEnd,
+            dataSize: alignedDataSize,
+            headerSize: headerEnd - offset
+        });
         fits.hdus.push(primaryHDU);
         
-        // 更新偏移量到下一个HDU
-        offset = dataEnd;
+        // 更新偏移量到下一个HDU的开始位置
+        offset = currentOffset;
+        console.log('主HDU解析完成，当前偏移量:', offset);
         
         // 解析扩展HDU
         let extCount = 0;
-        const maxExtensions = 10; // 限制扩展数量，防止无限循环
+        const maxExtensions = 10;
         
         while (offset < buffer.length && extCount < maxExtensions) {
             try {
@@ -184,19 +268,21 @@ export class FITSParser {
                 console.log(`当前偏移量: ${offset}`);
                 
                 // 检查是否还有足够的数据
-                if (buffer.length - offset < 2880) {
+                if (buffer.length - offset < FITS_BLOCK_SIZE) {
                     console.log('剩余数据不足一个块，停止解析');
                     break;
                 }
                 
+                this.buffer.seek(offset);
+                
                 // 检查是否是有效的扩展头
-                if (!this.isValidExtension(buffer, offset)) {
+                if (!this.isValidExtension()) {
                     console.log('未找到有效的扩展头，停止解析');
                     break;
                 }
                 
                 // 解析扩展头信息
-                const extHeader = this.parseHeader(buffer, offset);
+                const extHeader = this.parseHeader(offset);
                 console.log(`扩展 HDU #${extCount + 1} 头信息关键字: `, extHeader.getAllItems().map(item => item.key));
                 
                 // 检查是否找到END关键字
@@ -208,11 +294,18 @@ export class FITSParser {
                 fits.headers.push(extHeader);
                 
                 // 计算扩展头信息大小
-                const extHeaderSize = this.findHeaderEnd(buffer, offset);
-                const extHeaderBlocks = Math.ceil(extHeaderSize / 2880);
-                const headerEnd = offset + extHeaderBlocks * 2880;
+                const extHeaderSize = this.findHeaderEnd(offset);
+                const extHeaderBlocks = Math.ceil(extHeaderSize / FITS_BLOCK_SIZE);
+                const headerSize = extHeaderBlocks * FITS_BLOCK_SIZE;
+                const headerEnd = offset + headerSize;
                 
-                console.log(`扩展头大小: ${extHeaderSize} 字节, ${extHeaderBlocks} 个块, 结束于 ${headerEnd}`);
+                console.log(`扩展头大小计算详情:`);
+                console.log(`- 实际头部大小（包括END卡片）: ${extHeaderSize} 字节`);
+                console.log(`- 需要的2880字节块数: ${extHeaderBlocks}`);
+                console.log(`- 对齐后的头部大小: ${headerSize} 字节`);
+                console.log(`- 头部起始位置: ${offset}`);
+                console.log(`- 头部结束位置: ${offset + extHeaderSize}`);
+                console.log(`- 数据起始位置: ${headerEnd}`);
                 
                 // 计算扩展数据大小
                 let extDataSize = 0;
@@ -228,9 +321,14 @@ export class FITSParser {
                 }
                 
                 // 计算对齐后的数据大小
-                const alignedDataSize = Math.ceil(extDataSize / 2880) * 2880;
+                const dataBlocks = Math.ceil(extDataSize / FITS_BLOCK_SIZE);
+                const alignedDataSize = dataBlocks * FITS_BLOCK_SIZE;
                 const dataEnd = headerEnd + alignedDataSize;
-                console.log(`数据大小: ${extDataSize} 字节, 对齐后: ${alignedDataSize} 字节, 结束于 ${dataEnd}`);
+                console.log(`数据大小计算:`);
+                console.log(`- 原始数据大小: ${extDataSize} 字节`);
+                console.log(`- 数据块数: ${dataBlocks}`);
+                console.log(`- 对齐后数据大小: ${alignedDataSize} 字节`);
+                console.log(`- 数据结束位置: ${dataEnd}`);
                 
                 // 解析扩展数据
                 let extData: Float32Array | null = null;
@@ -238,14 +336,19 @@ export class FITSParser {
                     console.log('解析扩展数据...');
                     if (xtensionItem?.value.trim() === 'BINTABLE') {
                         console.log('检测到BINTABLE，使用二进制表解析方法');
-                        extData = this.parseBinaryTable(buffer, headerEnd, extHeader, buffer.length - headerEnd);
+                        extData = this.parseBinaryTable(headerEnd, extHeader, buffer.length - headerEnd);
                     }
                 }
                 
                 console.log(`扩展 HDU #${extCount + 1} 数据解析结果: `, extData ? `长度=${extData.length}, 示例数据=${extData.slice(0, Math.min(10, extData.length))}` : 'null');
                 
-                // 创建扩展HDU
-                const extHDU = new FITSHDU(extHeader, extData);
+                // 创建扩展HDU，包含文件位置信息
+                const extHDU = new FITSHDU(extHeader, extData, {
+                    headerStart: offset,      // 扩展HDU头部开始位置
+                    dataStart: headerEnd,     // 扩展HDU数据开始位置
+                    dataSize: alignedDataSize,// 扩展HDU数据大小（包含填充）
+                    headerSize: headerSize    // 扩展HDU头部大小（包含填充）
+                });
                 fits.hdus.push(extHDU);
                 
                 // 更新偏移量到下一个HDU
@@ -261,382 +364,12 @@ export class FITSParser {
         console.log(`解析完成，共 ${fits.hdus.length} 个HDU`);
         return fits;
     }
-    
-    // 检查是否是有效的扩展头
-    private isValidExtension(buffer: Uint8Array, offset: number): boolean {
-        // 检查前80个字节是否包含XTENSION关键字
-        const line = this.readLine(buffer, offset);
-        return line.startsWith('XTENSION');
-    }
-    
-    // 查找头信息结束位置
-    private findHeaderEnd(buffer: Uint8Array, startOffset: number): number {
-        let offset = startOffset;
-        const maxLines = 1000; // 防止无限循环
-        let lineCount = 0;
-        
-        while (offset < buffer.length && lineCount < maxLines) {
-            // 读取一行（80字节）
-            const line = this.readLine(buffer, offset);
-            offset += 80;
-            lineCount++;
-            
-            // 检查是否是头信息结束标记
-            if (line.startsWith('END')) {
-                return offset;
-            }
-        }
-        
-        // 如果没有找到END标记，返回起始偏移量
-        return startOffset;
-    }
-    
-    // 检查FITS文件头签名
-    private checkFITSSignature(buffer: Uint8Array): boolean {
-        // FITS文件头应该以"SIMPLE  ="开头
-        const signature = "SIMPLE  =";
-        
-        for (let i = 0; i < signature.length; i++) {
-            if (buffer[i] !== signature.charCodeAt(i)) {
-                return false;
-            }
-        }
-        
-        return true;
-    }
-    
-    // 解析头信息
-    private parseHeader(buffer: Uint8Array, offset: number): FITSHeader {
-        const header = new FITSHeader();
-        let currentOffset = offset;
-        const maxLines = 1000; // 防止无限循环
-        let lineCount = 0;
-        
-        // 读取头信息
-        while (currentOffset < buffer.length && lineCount < maxLines) {
-            // 读取一行（80字节）
-            const line = this.readLine(buffer, currentOffset);
-            currentOffset += 80;
-            lineCount++;
-            
-            // 检查是否是头信息结束标记
-            if (line.startsWith('END')) {
-                break;
-            }
-            
-            // 解析头信息项
-            const item = this.parseHeaderItem(line);
-            if (item) {
-                header.addItem(item.key, item.value, item.comment);
-            }
-        }
-        
-        return header;
-    }
-    
-    // 读取一行（80字节）
-    private readLine(buffer: Uint8Array, offset: number): string {
-        if (offset + 80 > buffer.length) {
-            return '';
-        }
-        
-        const bytes = buffer.slice(offset, offset + 80);
-        return new TextDecoder().decode(bytes);
-    }
-    
-    // 解析头信息项
-    private parseHeaderItem(line: string): FITSHeaderItem | null {
-        // 头信息项格式：KEYWORD = VALUE / COMMENT
-        const keyValueMatch = line.match(/^([A-Z0-9_-]+)\s*=\s*(.+?)(?:\s*\/\s*(.*))?$/);
-        
-        if (keyValueMatch) {
-            const key = keyValueMatch[1].trim();
-            let valueStr = keyValueMatch[2].trim();
-            const comment = keyValueMatch[3]?.trim();
-            
-            // 解析值
-            let value: any;
-            
-            if (valueStr.startsWith("'") && valueStr.includes("'")) {
-                // 字符串值
-                const endQuotePos = valueStr.lastIndexOf("'");
-                value = valueStr.substring(1, endQuotePos).trim();
-            } else if (valueStr === 'T') {
-                // 布尔值（真）
-                value = true;
-            } else if (valueStr === 'F') {
-                // 布尔值（假）
-                value = false;
-            } else {
-                // 数值
-                const numValue = parseFloat(valueStr);
-                if (!isNaN(numValue)) {
-                    value = numValue;
-                } else {
-                    value = valueStr;
-                }
-            }
-            
-            return { key, value, comment };
-        }
-        
-        return null;
-    }
-    
-    // 解析数据
-    private parseData(buffer: Uint8Array, offset: number, header: FITSHeader): Float32Array {
-        // 获取数据类型和维度信息
-        const bitpix = header.getItem('BITPIX')?.value || 0;
-        const naxis = header.getItem('NAXIS')?.value || 0;
-        
-        // 计算数据大小
-        let dataSize = 1;
-        for (let i = 1; i <= naxis; i++) {
-            const axisSize = header.getItem(`NAXIS${i}`)?.value || 0;
-            dataSize *= axisSize;
-        }
-        
-        // 创建数据数组
-        const data = new Float32Array(dataSize);
-        
-        // 根据BITPIX解析数据
-        const view = new DataView(buffer.buffer, buffer.byteOffset + offset);
-        
-        // 获取BZERO和BSCALE（如果有）
-        const bzero = header.getItem('BZERO')?.value || 0;
-        const bscale = header.getItem('BSCALE')?.value || 1;
-        
-        try {
-            for (let i = 0; i < dataSize; i++) {
-                let value = 0;
-                
-                switch (bitpix) {
-                    case 8: // 无符号字节
-                        value = view.getUint8(i);
-                        break;
-                    case 16: // 16位整数
-                        value = view.getInt16(i * 2, false); // FITS使用大端字节序
-                        break;
-                    case 32: // 32位整数
-                        value = view.getInt32(i * 4, false);
-                        break;
-                    case 64: // 64位整数
-                        const high = view.getInt32(i * 8, false);
-                        const low = view.getInt32(i * 8 + 4, false);
-                        value = high * Math.pow(2, 32) + low;
-                        break;
-                    case -32: // 32位浮点数
-                        value = view.getFloat32(i * 4, false);
-                        break;
-                    case -64: // 64位浮点数
-                        value = view.getFloat64(i * 8, false);
-                        break;
-                    default:
-                        throw new Error(`不支持的BITPIX值: ${bitpix}`);
-                }
-                
-                // 应用BZERO和BSCALE
-                data[i] = value * bscale + bzero;
-            }
-        } catch (error) {
-            console.error('解析数据时出错:', error);
-            return new Float32Array(0);
-        }
-        
-        // 【新增日志】输出解析的数据长度和部分样本值
-        console.log(`parseData: 解析完成, bitpix=${bitpix}, naxis=${naxis}, dataSize=${dataSize}, data长度=${data.length}, 示例数据=`, data.slice(0, Math.min(10, data.length)));
-        
-        return data;
-    }
 
-    // 新的方法用于解析二进制表格数据
-    private parseBinaryTable(buffer: Uint8Array, offset: number, header: FITSHeader, availableBytes: number): Float32Array {
-        console.log('开始解析二进制表格数据');
-        console.log('头信息项:', header.getAllItems());
+    private validateFITSHeader(): boolean {
+        if (!this.buffer) return false;
         
-        const naxis1 = header.getItem('NAXIS1')?.value;
-        const naxis2 = header.getItem('NAXIS2')?.value;
-        const tfields = header.getItem('TFIELDS')?.value;
-        const tform1 = header.getItem('TFORM1')?.value;
-        
-        console.log(`NAXIS1 = ${naxis1}, NAXIS2 = ${naxis2}, TFIELDS = ${tfields}, TFORM1 = ${tform1}`);
-        
-        if (!naxis1 || !naxis2) {
-            console.error('二进制表格缺少 NAXIS1 或 NAXIS2');
-            return new Float32Array(0);
-        }
-        
-        const rowLength = naxis1; // 每行字节数
-        const numRows = naxis2;
-        console.log(`行长度 = ${rowLength} 字节, 行数 = ${numRows}`);
-        
-        // 计算实际需要的数据大小
-        const rawDataSize = rowLength * numRows;
-        console.log(`计算数据大小: 原始=${rawDataSize}字节, 可用=${availableBytes}字节`);
-        
-        // 检查数据大小是否足够
-        const availableRows = Math.floor(availableBytes / rowLength);
-        const actualRows = Math.min(numRows, availableRows);
-        console.log(`实际可处理行数: ${actualRows} (${(actualRows/numRows*100).toFixed(1)}%)`);
-        
-        // 获取列信息
-        const columnFormats = [];
-        let currentOffset = 0;
-        for (let i = 1; i <= tfields; i++) {
-            const tform = header.getItem(`TFORM${i}`)?.value;
-            const ttype = header.getItem(`TTYPE${i}`)?.value;
-            console.log(`列 ${i}: TFORM=${tform}, TTYPE=${ttype}`);
-            if (!tform) continue;
-            
-            let byteSize = 0;
-            let repeat = 1;
-            
-            // 解析TFORM格式，例如 '1D' 或 'D'
-            const match = tform.match(/^(\d+)?([A-Z])$/);
-            if (match) {
-                repeat = parseInt(match[1]) || 1;
-                const format = match[2];
-                
-                if (format === 'D') byteSize = 8;      // 双精度浮点数
-                else if (format === 'E') byteSize = 4; // 单精度浮点数
-                else if (format === 'J') byteSize = 4; // 32位整数
-                else if (format === 'I') byteSize = 2; // 16位整数
-                else if (format === 'B') byteSize = 1; // 8位整数
-            }
-            
-            const totalSize = byteSize * repeat;
-            console.log(`列 ${i} 格式解析: repeat=${repeat}, byteSize=${byteSize}, totalSize=${totalSize}`);
-            
-            if (byteSize > 0) {
-                columnFormats.push({
-                    format: tform,
-                    byteSize: byteSize,
-                    repeat: repeat,
-                    totalSize: totalSize,
-                    offset: currentOffset,
-                    type: ttype
-                });
-                currentOffset += totalSize;
-            }
-        }
-        
-        console.log('列格式信息:', columnFormats);
-        
-        // 验证行长度
-        if (currentOffset > rowLength) {
-            console.error(`计算的总字节数(${currentOffset})大于行长度(${rowLength})`);
-            return new Float32Array(0);
-        }
-        
-        // 我们只关注第一列的数据
-        const firstColumn = columnFormats[0];
-        if (!firstColumn) {
-            console.error('未找到有效的列格式信息');
-            return new Float32Array(0);
-        }
-        
-        const result = new Float32Array(actualRows * firstColumn.repeat);
-        console.log(`创建结果数组，长度 = ${result.length}`);
-        
-        try {
-            // 创建一个新的视图，使用实际的数据大小
-            const dataView = new DataView(buffer.buffer, buffer.byteOffset + offset, availableBytes);
-            console.log(`创建 DataView: offset = ${offset}, dataSize = ${availableBytes}`);
-            
-            // 读取前几个值进行调试
-            console.log('前5行的原始字节:');
-            for (let i = 0; i < Math.min(5, actualRows); i++) {
-                const rowOffset = i * rowLength;
-                const valueOffset = rowOffset + firstColumn.offset;
-                
-                const bytes = new Uint8Array(buffer.buffer, buffer.byteOffset + offset + valueOffset, firstColumn.totalSize);
-                console.log(`Row ${i}: [${Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join(' ')}]`);
-                
-                // 读取该行的所有重复值
-                for (let j = 0; j < firstColumn.repeat; j++) {
-                    const elementOffset = valueOffset + j * firstColumn.byteSize;
-                    let value: number;
-                    
-                    if (firstColumn.format.includes('D')) {
-                        value = dataView.getFloat64(elementOffset, false);
-                    } else if (firstColumn.format.includes('E')) {
-                        value = dataView.getFloat32(elementOffset, false);
-                    } else if (firstColumn.format.includes('J')) {
-                        value = dataView.getInt32(elementOffset, false);
-                    } else if (firstColumn.format.includes('I')) {
-                        value = dataView.getInt16(elementOffset, false);
-                    } else if (firstColumn.format.includes('B')) {
-                        value = dataView.getUint8(elementOffset);
-                    } else {
-                        throw new Error(`不支持的数据格式: ${firstColumn.format}`);
-                    }
-                    
-                    result[i * firstColumn.repeat + j] = value;
-                    console.log(`Row ${i}, Element ${j}: ${value}`);
-                }
-            }
-            
-            // 继续处理剩余数据
-            console.log('开始处理剩余数据...');
-            let processedRows = 0;
-            
-            for (let row = 0; row < actualRows; row++) {
-                const rowOffset = row * rowLength;
-                const valueOffset = rowOffset + firstColumn.offset;
-                
-                // 读取该行的所有重复值
-                for (let j = 0; j < firstColumn.repeat; j++) {
-                    const elementOffset = valueOffset + j * firstColumn.byteSize;
-                    
-                    if (elementOffset + firstColumn.byteSize > availableBytes) {
-                        console.warn(`警告：在处理第 ${row} 行第 ${j} 个元素时达到数据边界，提前结束`);
-                        break;
-                    }
-                    
-                    let value: number;
-                    if (firstColumn.format.includes('D')) {
-                        value = dataView.getFloat64(elementOffset, false);
-                    } else if (firstColumn.format.includes('E')) {
-                        value = dataView.getFloat32(elementOffset, false);
-                    } else if (firstColumn.format.includes('J')) {
-                        value = dataView.getInt32(elementOffset, false);
-                    } else if (firstColumn.format.includes('I')) {
-                        value = dataView.getInt16(elementOffset, false);
-                    } else if (firstColumn.format.includes('B')) {
-                        value = dataView.getUint8(elementOffset);
-                    } else {
-                        throw new Error(`不支持的数据格式: ${firstColumn.format}`);
-                    }
-                    
-                    result[row * firstColumn.repeat + j] = value;
-                }
-                
-                processedRows++;
-                
-                // 每处理10万行输出一次进度
-                if (processedRows % 100000 === 0) {
-                    console.log(`已处理 ${processedRows} 行，完成 ${(processedRows / actualRows * 100).toFixed(1)}%`);
-                }
-            }
-            
-            console.log(`数据解析完成，结果数组长度 = ${result.length}`);
-            console.log('结果数组前10个值:', Array.from(result.slice(0, 10)));
-            
-            return result;
-        } catch (error) {
-            console.error('解析二进制表格数据时出错:', error);
-            if (error instanceof Error) {
-                console.error('错误详情:', error.message);
-                console.error('调用栈:', error.stack);
-            }
-            return new Float32Array(0);
-        }
-    }
-
-    // 验证FITS文件头
-    private validateFITSHeader(buffer: Uint8Array): boolean {
         // 检查SIMPLE关键字
-        const header = this.readLine(buffer, 0);
+        const header = this.buffer.readString(FLEN_CARD);
         if (!header.startsWith('SIMPLE  =')) {
             console.error('FITS头部验证失败：缺少SIMPLE关键字');
             return false;
@@ -648,15 +381,19 @@ export class FITSParser {
             return false;
         }
 
+        this.buffer.seek(FLEN_CARD);
+        
         // 检查BITPIX
-        const bitpixLine = this.readLine(buffer, FLEN_CARD);
+        const bitpixLine = this.buffer.readString(FLEN_CARD);
         if (!bitpixLine.startsWith('BITPIX')) {
             console.error('FITS头部验证失败：缺少BITPIX关键字');
             return false;
         }
 
+        this.buffer.seek(FLEN_CARD * 2);
+        
         // 检查NAXIS
-        const naxisLine = this.readLine(buffer, FLEN_CARD * 2);
+        const naxisLine = this.buffer.readString(FLEN_CARD);
         if (!naxisLine.startsWith('NAXIS')) {
             console.error('FITS头部验证失败：缺少NAXIS关键字');
             return false;
@@ -665,7 +402,6 @@ export class FITSParser {
         return true;
     }
 
-    // 验证主HDU
     private validatePrimaryHDU(header: FITSHeader): boolean {
         // 验证必需的关键字
         const requiredKeys = ['SIMPLE', 'BITPIX', 'NAXIS'];
@@ -686,7 +422,7 @@ export class FITSParser {
 
         // 验证NAXIS值
         const naxis = header.getItem('NAXIS')?.value;
-        if (typeof naxis !== 'number' || naxis < 0 || naxis > 999) {
+        if (typeof naxis !== 'number' || naxis < 0 || naxis > MAX_DIMS) {
             console.error(`主HDU验证失败：无效的NAXIS值 ${naxis}`);
             return false;
         }
@@ -694,131 +430,324 @@ export class FITSParser {
         return true;
     }
 
-    // 验证扩展HDU
-    private validateExtensionHDU(header: FITSHeader): HDUType | null {
-        const xtension = header.getItem('XTENSION')?.value;
-        if (!xtension) {
-            console.error('扩展HDU验证失败：缺少XTENSION关键字');
-            return null;
-        }
-
-        // 确定HDU类型
-        const xtensionValue = xtension.trim().toUpperCase();
-        switch (xtensionValue) {
-            case 'IMAGE':
-                return HDUType.IMAGE_HDU;
-            case 'TABLE':
-                return HDUType.ASCII_TBL;
-            case 'BINTABLE':
-                return HDUType.BINARY_TBL;
-            default:
-                console.error(`扩展HDU验证失败：未知的XTENSION类型 ${xtensionValue}`);
-                return null;
-        }
+    private isValidExtension(): boolean {
+        if (!this.buffer) return false;
+        const line = this.buffer.readString(FLEN_CARD);
+        return line.startsWith('XTENSION');
     }
 
-    /**
-     * 读取并验证HDU头部
-     */
-    private ffrhdu(hdutype: HDUType, status: number): number {
-        if (!this.fptr) {
-            return NOT_FITS;
-        }
-
-        // 使用全局常量FLEN_CARD
-        let card = new Uint8Array(FLEN_CARD);
-
-        // 读取第一个关键字
-        this.ffgcrd("SIMPLE", card, status);
-
-        // 检查是否为SIMPLE或XTENSION
-        if (this.strncmp(card, "SIMPLE", 6) === 0) {
-            // 主HDU验证
-            hdutype = HDUType.IMAGE_HDU;
+    private findHeaderEnd(startOffset: number): number {
+        if (!this.buffer) return 0;
+        
+        this.buffer.seek(startOffset);
+        const maxLines = 1000; // 防止无限循环
+        let lineCount = 0;
+        
+        while (lineCount < maxLines) {
+            const line = this.buffer.readString(FLEN_CARD);
+            lineCount++;
             
-            // 验证SIMPLE = T
-            if (card[29] !== 'T'.charCodeAt(0)) {
-                return NOT_FITS;
-            }
-            
-            // 验证BITPIX
-            this.ffgcrd("BITPIX", card, status);
-            // 验证BITPIX值...
-            
-            // 验证NAXIS
-            this.ffgcrd("NAXIS", card, status);
-            // 验证NAXIS值...
-            
-        } else if (this.strncmp(card, "XTENSION", 8) === 0) {
-            // 扩展HDU验证
-            if (this.strncmp(card.slice(10), "IMAGE   ", 9) === 0) {
-                hdutype = HDUType.IMAGE_HDU;
-            } else if (this.strncmp(card.slice(10), "TABLE   ", 9) === 0) {
-                hdutype = HDUType.ASCII_TBL;  
-            } else if (this.strncmp(card.slice(10), "BINTABLE", 9) === 0) {
-                hdutype = HDUType.BINARY_TBL;
-            } else {
-                return NOT_FITS;
-            }
-        } else {
-            return NOT_FITS;
-        }
-
-        return status;
-    }
-
-    /**
-     * 打开FITS文件
-     */
-    private ffopen(buffer: Uint8Array): number {
-        let status = 0;
-
-        // 分配fitsfile结构
-        this.fptr = {
-            Fptr: {
-                filehandle: 0,
-                driver: 0,
-                filename: "memory",
-                filesize: buffer.length,
-                writemode: 0,
-                datastart: -1,
-                iobuffer: buffer,
-                headstart: new Array(1001).fill(0)
-            }
-        };
-
-        return status;
-    }
-
-    // 辅助函数
-    private strncmp(buf1: Uint8Array, str2: string, n: number): number {
-        const buf2 = new TextEncoder().encode(str2);
-        for (let i = 0; i < n; i++) {
-            if (buf1[i] !== buf2[i]) {
-                return buf1[i] - buf2[i];
+            if (line.startsWith('END')) {
+                // 返回实际的头部大小（包括END卡片）
+                return lineCount * FLEN_CARD;
             }
         }
+        
         return 0;
     }
 
-    private ffgcrd(keyname: string, card: Uint8Array, status: number): number {
-        if (!this.fptr) {
-            return NOT_FITS;
-        }
-
-        // 在iobuffer中查找关键字
-        const buffer = this.fptr.Fptr.iobuffer;
-        let found = false;
+    private parseHeader(offset: number): FITSHeader {
+        if (!this.buffer) throw new Error('Buffer not initialized');
         
-        for (let i = 0; i < buffer.length; i += FLEN_CARD) {
-            const line = buffer.slice(i, i + FLEN_CARD);
-            if (this.strncmp(line, keyname, keyname.length) === 0) {
-                card.set(line);
-                found = true;
+        const header = new FITSHeader();
+        this.buffer.seek(offset);
+        const maxLines = 1000;
+        let lineCount = 0;
+        
+        while (lineCount < maxLines) {
+            const line = this.buffer.readString(FLEN_CARD);
+            lineCount++;
+            
+            if (line.startsWith('END')) {
                 break;
             }
+            
+            const item = this.parseHeaderItem(line);
+            if (item) {
+                header.addItem(item.key, item.value, item.comment);
+            }
         }
+        
+        return header;
+    }
 
-        return found ? status : NOT_FITS;
+    private parseHeaderItem(line: string): FITSHeaderItem | null {
+        const keyValueMatch = line.match(/^([A-Z0-9_-]+)\s*=\s*(.+?)(?:\s*\/\s*(.*))?$/);
+        
+        if (keyValueMatch) {
+            const key = keyValueMatch[1].trim();
+            let valueStr = keyValueMatch[2].trim();
+            const comment = keyValueMatch[3]?.trim();
+            
+            let value: any;
+            
+            if (valueStr.startsWith("'") && valueStr.includes("'")) {
+                const endQuotePos = valueStr.lastIndexOf("'");
+                value = valueStr.substring(1, endQuotePos).trim();
+            } else if (valueStr === 'T') {
+                value = true;
+            } else if (valueStr === 'F') {
+                value = false;
+            } else {
+                const numValue = parseFloat(valueStr);
+                if (!isNaN(numValue)) {
+                    value = numValue;
+                } else {
+                    value = valueStr;
+                }
+            }
+            
+            return { key, value, comment };
+        }
+        
+        return null;
+    }
+
+    private parseData(offset: number, header: FITSHeader): Float32Array {
+        if (!this.buffer) throw new Error('Buffer not initialized');
+        
+        const bitpix = header.getItem('BITPIX')?.value || 0;
+        const naxis = header.getItem('NAXIS')?.value || 0;
+        
+        let dataSize = 1;
+        for (let i = 1; i <= naxis; i++) {
+            const axisSize = header.getItem(`NAXIS${i}`)?.value || 0;
+            dataSize *= axisSize;
+        }
+        
+        const data = new Float32Array(dataSize);
+        this.buffer.seek(offset);
+        
+        const bzero = header.getItem('BZERO')?.value || 0;
+        const bscale = header.getItem('BSCALE')?.value || 1;
+        
+        try {
+            for (let i = 0; i < dataSize; i++) {
+                let value = 0;
+                
+                switch (bitpix) {
+                    case DataType.BYTE_IMG:
+                        value = this.buffer.readInt8();
+                        break;
+                    case DataType.SHORT_IMG:
+                        value = this.buffer.readInt16();
+                        break;
+                    case DataType.LONG_IMG:
+                        value = this.buffer.readInt32();
+                        break;
+                    case DataType.FLOAT_IMG:
+                        value = this.buffer.readFloat32();
+                        break;
+                    case DataType.DOUBLE_IMG:
+                        value = this.buffer.readFloat64();
+                        break;
+                    default:
+                        throw new Error(`不支持的BITPIX值: ${bitpix}`);
+                }
+                
+                data[i] = value * bscale + bzero;
+            }
+        } catch (error) {
+            console.error('解析数据时出错:', error);
+            return new Float32Array(0);
+        }
+        
+        console.log(`parseData: 解析完成, bitpix=${bitpix}, naxis=${naxis}, dataSize=${dataSize}, data长度=${data.length}, 示例数据=`, data.slice(0, Math.min(10, data.length)));
+        
+        return data;
+    }
+
+    private parseBinaryTable(offset: number, header: FITSHeader, availableBytes: number): Float32Array {
+        if (!this.buffer) throw new Error('Buffer not initialized');
+        
+        console.log('开始解析二进制表格数据');
+        console.log('数据起始偏移量:', offset);
+        console.log('可用字节数:', availableBytes);
+        console.log('头信息项:', header.getAllItems());
+        
+        const naxis1 = header.getItem('NAXIS1')?.value;
+        const naxis2 = header.getItem('NAXIS2')?.value;
+        const tfields = header.getItem('TFIELDS')?.value;
+        
+        console.log(`NAXIS1 (行长度) = ${naxis1}, NAXIS2 (行数) = ${naxis2}, TFIELDS (字段数) = ${tfields}`);
+        
+        if (!naxis1 || !naxis2 || !tfields) {
+            console.error('二进制表格缺少必要的头信息');
+            return new Float32Array(0);
+        }
+        
+        // 解析所有字段的格式
+        const columnFormats = [];
+        let totalRowSize = 0;
+        
+        for (let i = 1; i <= tfields; i++) {
+            const tform = header.getItem(`TFORM${i}`)?.value;
+            const ttype = header.getItem(`TTYPE${i}`)?.value;
+            
+            if (!tform) {
+                console.error(`缺少TFORM${i}定义`);
+                continue;
+            }
+            
+            console.log(`列 ${i}: TFORM=${tform}, TTYPE=${ttype}`);
+            
+            // 解析TFORM格式：rTa
+            const match = tform.match(/^(\d*)([A-Z])/);
+            if (!match) {
+                console.error(`无效的TFORM${i}格式: ${tform}`);
+                continue;
+            }
+            
+            const repeatCount = match[1] ? parseInt(match[1]) : 1;
+            const dataType = match[2];
+            
+            // 确定数据类型的字节大小
+            let byteSize;
+            switch (dataType) {
+                case 'L': byteSize = 1; break;  // Logical
+                case 'B': byteSize = 1; break;  // Unsigned byte
+                case 'I': byteSize = 2; break;  // 16-bit integer
+                case 'J': byteSize = 4; break;  // 32-bit integer
+                case 'K': byteSize = 8; break;  // 64-bit integer
+                case 'E': byteSize = 4; break;  // 32-bit floating point
+                case 'D': byteSize = 8; break;  // 64-bit floating point
+                case 'C': byteSize = 8; break;  // Complex (2*4 bytes)
+                case 'M': byteSize = 16; break; // Double complex (2*8 bytes)
+                case 'A': byteSize = 1; break;  // Character
+                default:
+                    console.error(`不支持的数据类型: ${dataType}`);
+                    continue;
+            }
+            
+            // 计算该字段的总字节数：重复计数 * 字节大小
+            const fieldSize = repeatCount * byteSize;
+            console.log(`字段${i}大小计算: ${repeatCount} * ${byteSize} = ${fieldSize} 字节`);
+            
+            columnFormats.push({
+                index: i,
+                format: tform,
+                dataType,
+                byteSize,
+                repeatCount,
+                offset: totalRowSize,
+                size: fieldSize
+            });
+            
+            // 累加行大小
+            totalRowSize += fieldSize;
+        }
+        
+        console.log(`计算得到的每行总字节数: ${totalRowSize}`);
+        if (totalRowSize !== naxis1) {
+            console.warn(`警告：计算的行大小(${totalRowSize})与NAXIS1(${naxis1})不匹配`);
+        }
+        
+        // 确保数据缓冲区足够大
+        const totalDataSize = naxis2 * naxis1;
+        console.log(`总数据大小: ${totalDataSize} 字节`);
+        
+        if (totalDataSize > availableBytes) {
+            console.error(`错误：数据大小(${totalDataSize})超出可用字节数(${availableBytes})`);
+            return new Float32Array(0);
+        }
+        
+        // 创建结果数组
+        const firstColumn = columnFormats[0];
+        if (!firstColumn) {
+            console.error('没有找到第一列的格式信息');
+            return new Float32Array(0);
+        }
+        
+        const resultSize = naxis2 * firstColumn.repeatCount;
+        console.log(`创建结果数组，大小: ${resultSize}`);
+        const result = new Float32Array(resultSize);
+        
+        try {
+            console.log('开始读取数据...');
+            console.log(`- 数据起始位置: ${offset}`);
+            console.log(`- 每行字节数: ${naxis1}`);
+            console.log(`- 总行数: ${naxis2}`);
+            console.log(`- 第一列重复次数: ${firstColumn.repeatCount}`);
+            console.log(`- 第一列字节大小: ${firstColumn.byteSize}`);
+            
+            // 遍历每一行
+            for (let row = 0; row < naxis2; row++) {
+                const rowStart = offset + row * naxis1;
+                
+                // 边界检查
+                if (rowStart + naxis1 > offset + availableBytes) {
+                    console.error(`行起始位置(${rowStart})超出可用范围(${offset + availableBytes})`);
+                    break;
+                }
+                
+                // 读取该字段的所有重复值
+                for (let r = 0; r < firstColumn.repeatCount; r++) {
+                    const valueOffset = rowStart + firstColumn.offset + r * firstColumn.byteSize;
+                    
+                    // 边界检查
+                    if (valueOffset + firstColumn.byteSize > offset + availableBytes) {
+                        console.error(`值偏移量(${valueOffset})超出可用范围(${offset + availableBytes})`);
+                        break;
+                    }
+                    
+                    this.buffer.seek(valueOffset);
+                    let value: number;
+                    
+                    try {
+                        switch (firstColumn.dataType) {
+                            case 'D': value = this.buffer.readFloat64(); break;
+                            case 'E': value = this.buffer.readFloat32(); break;
+                            case 'J': value = this.buffer.readInt32(); break;
+                            case 'I': value = this.buffer.readInt16(); break;
+                            case 'B': value = this.buffer.readInt8(); break;
+                            default: 
+                                console.warn(`不支持的数据类型: ${firstColumn.dataType}`);
+                                value = 0;
+                        }
+                        
+                        if (isFinite(value)) {
+                            const resultIndex = row * firstColumn.repeatCount + r;
+                            if (resultIndex < result.length) {
+                                result[resultIndex] = value;
+                            } else {
+                                console.error(`结果索引(${resultIndex})超出数组范围(${result.length})`);
+                            }
+                        }
+                    } catch (error) {
+                        console.error(`读取数据出错: row=${row}, repeat=${r}, offset=${valueOffset}`, error);
+                        throw error;
+                    }
+                }
+                
+                // 输出进度
+                if (row % 100000 === 0 || row === naxis2 - 1) {
+                    console.log(`处理进度: ${((row / naxis2) * 100).toFixed(1)}%`);
+                }
+            }
+            
+            console.log('数据读取完成');
+            console.log(`结果数组大小: ${result.length}`);
+            console.log('示例数据:', result.slice(0, 10));
+            
+            return result;
+            
+        } catch (error) {
+            console.error('解析二进制表格数据时出错:', error);
+            if (error instanceof Error) {
+                console.error('错误详情:', error.message);
+                console.error('调用栈:', error.stack);
+            }
+            return new Float32Array(0);
+        }
     }
 } 
