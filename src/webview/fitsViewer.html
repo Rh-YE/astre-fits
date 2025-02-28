@@ -864,13 +864,18 @@
                     break;
                     
                 case 'showSpectrum':
+                    log('收到显示光谱的命令');
                     // 隐藏图像Canvas，显示光谱Canvas
                     document.getElementById('fits-canvas').style.display = 'none';
                     document.getElementById('spectrum-canvas').style.display = 'block';
                     document.getElementById('image-placeholder').style.display = 'none';
                     
+                    log('Canvas显示状态已切换');
+                    log(`收到的光谱数据: 波长点数=${message.data.wavelength.length}, 流量点数=${message.data.flux.length}`);
+                    log(`单位信息: 波长=${message.data.wavelengthUnit}, 流量=${message.data.fluxUnit}`);
+                    
                     // 渲染光谱数据
-                    renderSpectrum(message.data, message.wavelength);
+                    renderSpectrum(message.data);
                     break;
             }
         });
@@ -1119,7 +1124,8 @@
         });
 
         // 处理光谱数据显示
-        function renderSpectrum(data, wavelength) {
+        function renderSpectrum(data) {
+            log('开始渲染光谱');
             const canvas = document.getElementById('spectrum-canvas');
             const ctx = canvas.getContext('2d');
             
@@ -1129,22 +1135,27 @@
             }
 
             // 数据验证
-            if (!Array.isArray(data) || !Array.isArray(wavelength) || data.length === 0 || wavelength.length === 0) {
+            if (!data || !data.wavelength || !data.flux || 
+                !Array.isArray(data.wavelength) || !Array.isArray(data.flux) || 
+                data.wavelength.length === 0 || data.flux.length === 0) {
                 console.error('无效的光谱数据');
+                console.log('收到的数据:', data);
                 return;
             }
 
-            if (data.length !== wavelength.length) {
-                console.error(`数据长度不匹配：flux=${data.length}, wavelength=${wavelength.length}`);
+            if (data.wavelength.length !== data.flux.length) {
+                console.error(`数据长度不匹配：flux=${data.flux.length}, wavelength=${data.wavelength.length}`);
                 return;
             }
 
-            log(`开始渲染光谱数据，数据点数量：${data.length}`);
+            log(`开始渲染光谱数据，数据点数量：${data.wavelength.length}`);
             
             // 设置Canvas尺寸为容器尺寸
             const container = document.querySelector('.image-container');
             canvas.width = container.clientWidth;
             canvas.height = container.clientHeight;
+            
+            log(`Canvas尺寸设置为: ${canvas.width}x${canvas.height}`);
             
             // 清空画布
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1157,19 +1168,19 @@
 
             // 过滤无效值并计算范围
             const validData = [];
-            for (let i = 0; i < data.length; i++) {
-                if (!isNaN(data[i]) && !isNaN(wavelength[i]) && 
-                    isFinite(data[i]) && isFinite(wavelength[i])) {
-                    validData.push({x: wavelength[i], y: data[i]});
-                    minY = Math.min(minY, data[i]);
-                    maxY = Math.max(maxY, data[i]);
-                    minX = Math.min(minX, wavelength[i]);
-                    maxX = Math.max(maxX, wavelength[i]);
+            for (let i = 0; i < data.wavelength.length; i++) {
+                if (!isNaN(data.flux[i]) && !isNaN(data.wavelength[i]) && 
+                    isFinite(data.flux[i]) && isFinite(data.wavelength[i])) {
+                    validData.push({x: data.wavelength[i], y: data.flux[i]});
+                    minY = Math.min(minY, data.flux[i]);
+                    maxY = Math.max(maxY, data.flux[i]);
+                    minX = Math.min(minX, data.wavelength[i]);
+                    maxX = Math.max(maxX, data.wavelength[i]);
                 }
             }
 
             if (validData.length === 0) {
-                console.error('没有有效的数据点');
+                log('错误：没有有效的数据点');
                 return;
             }
 
@@ -1179,6 +1190,8 @@
             const margin = { top: 40, right: 40, bottom: 60, left: 70 };
             const plotWidth = canvas.width - margin.left - margin.right;
             const plotHeight = canvas.height - margin.top - margin.bottom;
+            
+            log(`绘图区域尺寸：${plotWidth}x${plotHeight}`);
             
             // 添加一些padding到数据范围
             const rangeY = maxY - minY;
@@ -1191,6 +1204,8 @@
             // 计算缩放因子
             const scaleX = plotWidth / (maxX - minX);
             const scaleY = plotHeight / (maxY - minY);
+            
+            log(`缩放因子：X=${scaleX}, Y=${scaleY}`);
             
             // 绘制背景网格
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
@@ -1211,6 +1226,8 @@
             ctx.moveTo(margin.left, margin.top);
             ctx.lineTo(margin.left, canvas.height - margin.bottom);
             ctx.stroke();
+            
+            log('已绘制坐标轴');
             
             // 绘制刻度和标签
             ctx.fillStyle = 'white';
@@ -1256,19 +1273,22 @@
                 ctx.fillText(value.toFixed(1), x, canvas.height - margin.bottom + 10);
             }
             
+            log('已绘制刻度和网格');
+            
             // 绘制坐标轴标签
             ctx.font = '14px Arial';
             ctx.textAlign = 'center';
-            ctx.fillText('Wavelength', canvas.width / 2, canvas.height - margin.bottom / 3);
+            ctx.fillText(`Wavelength (${data.wavelengthUnit || 'Å'})`, canvas.width / 2, canvas.height - margin.bottom / 3);
             
             ctx.save();
             ctx.translate(margin.left / 3, canvas.height / 2);
             ctx.rotate(-Math.PI / 2);
-            ctx.fillText('Flux', 0, 0);
+            ctx.fillText(`Flux (${data.fluxUnit || 'Counts'})`, 0, 0);
             ctx.restore();
             
+            log('已绘制坐标轴标签');
+            
             // 绘制数据
-            // 首先绘制连线
             ctx.strokeStyle = '#4a9eff';
             ctx.lineWidth = 1.5;
             ctx.beginPath();
@@ -1286,6 +1306,8 @@
             
             ctx.stroke();
             
+            log('已绘制光谱曲线');
+            
             // 如果数据点较少，绘制数据点
             if (validData.length < 1000) {
                 ctx.fillStyle = '#ff4a4a';
@@ -1297,194 +1319,9 @@
                     ctx.arc(x, y, 3, 0, Math.PI * 2);
                     ctx.fill();
                 });
+                log('已绘制数据点');
             }
 
-            // 添加鼠标移动事件处理
-            canvas.addEventListener('mousemove', (event) => {
-                const rect = canvas.getBoundingClientRect();
-                const mouseX = event.clientX - rect.left;
-                const mouseY = event.clientY - rect.top;
-
-                // 检查鼠标是否在绘图区域内
-                if (mouseX >= margin.left && mouseX <= canvas.width - margin.right &&
-                    mouseY >= margin.top && mouseY <= canvas.height - margin.bottom) {
-                    
-                    // 转换回数据坐标
-                    const dataX = minX + (mouseX - margin.left) / scaleX;
-                    const dataY = maxY - (mouseY - margin.top) / scaleY;
-
-                    // 找到最近的数据点
-                    let closestPoint = null;
-                    let minDistance = Infinity;
-                    
-                    validData.forEach(point => {
-                        const distance = Math.abs(point.x - dataX);
-                        if (distance < minDistance) {
-                            minDistance = distance;
-                            closestPoint = point;
-                        }
-                    });
-
-                    if (closestPoint) {
-                        // 更新值显示
-                        document.getElementById('pixel-value').textContent = 
-                            `流量: ${closestPoint.y.toExponential(3)}`;
-                        document.getElementById('image-coords').textContent = 
-                            `波长: ${closestPoint.x.toFixed(2)}`;
-                        
-                        // 清除之前的绘制
-                        ctx.clearRect(0, 0, canvas.width, canvas.height);
-                        
-                        // 重新绘制所有数据
-                        drawAxesAndGrid();
-                        drawData();
-                        
-                        // 绘制十字光标
-                        ctx.save();
-                        ctx.strokeStyle = '#ff0000';
-                        ctx.lineWidth = 1;
-                        ctx.setLineDash([5, 5]);
-                        
-                        const x = margin.left + (closestPoint.x - minX) * scaleX;
-                        const y = canvas.height - margin.bottom - (closestPoint.y - minY) * scaleY;
-                        
-                        // 垂直线
-                        ctx.beginPath();
-                        ctx.moveTo(x, margin.top);
-                        ctx.lineTo(x, canvas.height - margin.bottom);
-                        ctx.stroke();
-                        
-                        // 水平线
-                        ctx.beginPath();
-                        ctx.moveTo(margin.left, y);
-                        ctx.lineTo(canvas.width - margin.right, y);
-                        ctx.stroke();
-                        
-                        // 绘制数据点
-                        ctx.setLineDash([]);
-                        ctx.fillStyle = '#ff0000';
-                        ctx.beginPath();
-                        ctx.arc(x, y, 4, 0, Math.PI * 2);
-                        ctx.fill();
-                        
-                        ctx.restore();
-                    }
-                }
-            });
-
-            // 鼠标离开时清除值显示
-            canvas.addEventListener('mouseleave', () => {
-                document.getElementById('pixel-value').textContent = '-';
-                document.getElementById('image-coords').textContent = '-';
-                // 重新绘制以清除十字光标
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                drawAxesAndGrid();
-                drawData();
-            });
-            
-            // 绘制坐标轴和网格的函数
-            function drawAxesAndGrid() {
-                // 绘制坐标轴
-                ctx.strokeStyle = 'white';
-                ctx.lineWidth = 1;
-                
-                // X轴
-                ctx.beginPath();
-                ctx.moveTo(margin.left, canvas.height - margin.bottom);
-                ctx.lineTo(canvas.width - margin.right, canvas.height - margin.bottom);
-                ctx.stroke();
-                
-                // Y轴
-                ctx.beginPath();
-                ctx.moveTo(margin.left, margin.top);
-                ctx.lineTo(margin.left, canvas.height - margin.bottom);
-                ctx.stroke();
-                
-                // 绘制网格和刻度
-                const xStep = plotWidth / 10;
-                const yStep = plotHeight / 10;
-                
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-                ctx.fillStyle = 'white';
-                ctx.textAlign = 'right';
-                ctx.font = '12px Arial';
-                
-                // X轴网格和刻度
-                for (let i = 0; i <= 10; i++) {
-                    const x = margin.left + i * xStep;
-                    const value = minX + (i / 10) * (maxX - minX);
-                    
-                    ctx.beginPath();
-                    ctx.moveTo(x, margin.top);
-                    ctx.lineTo(x, canvas.height - margin.bottom);
-                    ctx.stroke();
-                    
-                    ctx.fillText(value.toFixed(1), x, canvas.height - margin.bottom + 20);
-                }
-                
-                // Y轴网格和刻度
-                for (let i = 0; i <= 10; i++) {
-                    const y = canvas.height - margin.bottom - i * yStep;
-                    const value = minY + (i / 10) * (maxY - minY);
-                    
-                    ctx.beginPath();
-                    ctx.moveTo(margin.left, y);
-                    ctx.lineTo(canvas.width - margin.right, y);
-                    ctx.stroke();
-                    
-                    ctx.fillText(value.toExponential(2), margin.left - 10, y);
-                }
-                
-                // 绘制标签
-                ctx.font = '14px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText('Wavelength', canvas.width / 2, canvas.height - margin.bottom / 3);
-                
-                ctx.save();
-                ctx.translate(margin.left / 3, canvas.height / 2);
-                ctx.rotate(-Math.PI / 2);
-                ctx.fillText('Flux', 0, 0);
-                ctx.restore();
-            }
-            
-            // 绘制数据的函数
-            function drawData() {
-                // 绘制连线
-                ctx.strokeStyle = '#4a9eff';
-                ctx.lineWidth = 1.5;
-                ctx.beginPath();
-                
-                validData.forEach((point, i) => {
-                    const x = margin.left + (point.x - minX) * scaleX;
-                    const y = canvas.height - margin.bottom - (point.y - minY) * scaleY;
-                    
-                    if (i === 0) {
-                        ctx.moveTo(x, y);
-                    } else {
-                        ctx.lineTo(x, y);
-                    }
-                });
-                
-                ctx.stroke();
-                
-                // 如果数据点较少，绘制数据点
-                if (validData.length < 1000) {
-                    ctx.fillStyle = '#ff4a4a';
-                    validData.forEach(point => {
-                        const x = margin.left + (point.x - minX) * scaleX;
-                        const y = canvas.height - margin.bottom - (point.y - minY) * scaleY;
-                        
-                        ctx.beginPath();
-                        ctx.arc(x, y, 3, 0, Math.PI * 2);
-                        ctx.fill();
-                    });
-                }
-            }
-            
-            // 初始绘制
-            drawAxesAndGrid();
-            drawData();
-            
             log('光谱数据渲染完成');
         }
     </script>

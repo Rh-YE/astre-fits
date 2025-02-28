@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { FITSParser, FITS } from './fitsParser';
 import * as crypto from 'crypto';
-import { FITSDataManager, HDUType } from './models/FITSDataManager';
+import { FITSDataManager, HDUType, ColumnData } from './models/FITSDataManager';
 import { LoadingManager } from './models/LoadingManager';
 
 // 定义一个表格字段描述类
@@ -516,11 +516,93 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider {
                     });
                 }
             } else if (hduData.type === HDUType.BINTABLE || hduData.type === HDUType.TABLE) {
-                webviewPanel.webview.postMessage({
-                    command: 'showSpectrum',
-                    data: Array.from(hduData.data),
-                    wavelength: Array.from({ length: hduData.data.length }, (_, i) => i)
-                });
+                // 处理光谱数据
+                if (hduData.columns) {
+                    console.log('发现列数据，开始处理光谱...');
+                    console.log('可用列:', Array.from(hduData.columns.keys()));
+                    
+                    // 查找波长和流量列（不区分大小写）
+                    let wavelengthData: number[] | undefined;
+                    let fluxData: number[] | undefined;
+                    let wavelengthUnit: string | undefined;
+                    let fluxUnit: string | undefined;
+
+                    for (const [name, column] of hduData.columns) {
+                        const columnNameLower = name.toLowerCase();
+                        console.log(`处理列: ${name}, 数据类型: ${column.dataType}, 单位: ${column.unit || '无'}`);
+                        
+                        if (columnNameLower.includes('wavelength') || columnNameLower === 'wave' || columnNameLower === 'lambda') {
+                            console.log(`找到波长列: ${name}`);
+                            wavelengthData = Array.from(column.data);
+                            wavelengthUnit = column.unit;
+                        } else if (columnNameLower.includes('flux') || columnNameLower === 'data' || columnNameLower === 'intensity') {
+                            console.log(`找到流量列: ${name}`);
+                            fluxData = Array.from(column.data);
+                            fluxUnit = column.unit;
+                        }
+                    }
+
+                    // 如果没有找到波长列，则创建一个序号数组
+                    if (!wavelengthData && fluxData) {
+                        console.log('未找到波长列，使用像素索引');
+                        wavelengthData = Array.from({ length: fluxData.length }, (_, i) => i);
+                        wavelengthUnit = 'pixel';
+                    }
+                    // 如果没有找到流量列，使用第一列数据
+                    if (!fluxData && hduData.data) {
+                        console.log('未找到流量列，使用第一列数据');
+                        fluxData = Array.from(hduData.data);
+                        if (!wavelengthData) {
+                            wavelengthData = Array.from({ length: fluxData.length }, (_, i) => i);
+                            wavelengthUnit = 'pixel';
+                        }
+                    }
+
+                    // 发送光谱数据到webview
+                    if (wavelengthData && fluxData) {
+                        console.log('准备发送光谱数据到webview');
+                        console.log(`波长数据长度: ${wavelengthData.length}, 单位: ${wavelengthUnit}`);
+                        console.log(`流量数据长度: ${fluxData.length}, 单位: ${fluxUnit}`);
+                        
+                        // 输出前20个波长和流量值用于调试
+                        console.log('波长数据前20个值:');
+                        console.table(wavelengthData.slice(0, 20).map((value, index) => ({
+                            index,
+                            wavelength: value
+                        })));
+
+                        console.log('流量数据前20个值:');
+                        console.table(fluxData.slice(0, 20).map((value, index) => ({
+                            index,
+                            flux: value
+                        })));
+
+                        webviewPanel.webview.postMessage({
+                            command: 'showSpectrum',
+                            data: {
+                                wavelength: wavelengthData,
+                                flux: fluxData,
+                                wavelengthUnit: wavelengthUnit || 'Å',
+                                fluxUnit: fluxUnit || 'Counts'
+                            }
+                        });
+                        console.log('光谱数据已发送到webview');
+                    } else {
+                        console.log('未能找到有效的波长或流量数据');
+                        webviewPanel.webview.postMessage({
+                            command: 'setImageData',
+                            rawData: null,
+                            message: '无法显示光谱：未找到有效的波长或流量数据'
+                        });
+                    }
+                } else {
+                    console.log('未找到列数据');
+                    webviewPanel.webview.postMessage({
+                        command: 'setImageData',
+                        rawData: null,
+                        message: '无法显示光谱：未找到列数据'
+                    });
+                }
             } else {
                 // 对于未知类型，尝试根据维度判断
                 const header = this.dataManager.getHDUHeader(fileUri, hduIndex);
@@ -558,5 +640,15 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider {
                 message: `切换HDU失败: ${error instanceof Error ? error.message : String(error)}`
             });
         }
+    }
+
+    // 获取列的单位
+    private getColumnUnit(columns: Map<string, ColumnData>, columnType: string): string | undefined {
+        for (const [name, column] of columns) {
+            if (name.toLowerCase().includes(columnType.toLowerCase())) {
+                return column.unit;
+            }
+        }
+        return undefined;
     }
 } 

@@ -4,6 +4,7 @@
  */
 
 import { HDUType, TableData } from './models/FITSDataManager';
+import { ColumnData } from './models/FITSDataManager';
 
 // 常量定义
 const READONLY = 0;
@@ -711,35 +712,40 @@ export class FITSParser {
                 }
             }
 
-            // 创建表格数据对象
-            const tableData: TableData = {
-                columns: new Map(Array.from(columns.entries()).map(([name, col]) => [
-                    name,
-                    {
-                        name: col.name,
-                        format: col.format,
-                        unit: col.unit,
-                        dataType: col.dataType,
-                        repeatCount: col.repeatCount,
-                        data: col.data
-                    }
-                ])),
-                rowCount: naxis2
-            };
-
-            // 为了保持向后兼容，返回第一列数据
-            const firstColumn = Array.from(columns.values())[0];
-            if (!firstColumn) {
-                return new Float32Array(0);
-            }
-
             // 输出每列的一些示例数据
             for (const [name, column] of columns) {
                 console.log(`列 ${name} 的前10个数据:`, Array.from(column.data.slice(0, 10)));
             }
 
-            // 返回第一列数据（为了保持接口兼容）
-            return new Float32Array(firstColumn.data);
+            // 创建一个包含所有列数据的Map
+            const columnsData = new Map<string, ColumnData>();
+            for (const [name, column] of columns) {
+                columnsData.set(name, {
+                    name: column.name,
+                    data: column.data,
+                    format: column.format,
+                    unit: column.unit,
+                    dataType: column.dataType,
+                    repeatCount: column.repeatCount
+                });
+            }
+
+            // 为了保持向后兼容，我们仍然返回第一列数据作为主数据
+            const firstColumn = Array.from(columns.values())[0];
+            if (!firstColumn) {
+                return new Float32Array(0);
+            }
+
+            // 将第一列数据转换为Float32Array并返回，同时在data属性中包含所有列数据
+            const result = new Float32Array(firstColumn.data);
+            Object.defineProperty(result, 'columns', {
+                value: columnsData,
+                enumerable: true,
+                configurable: true,
+                writable: true
+            });
+
+            return result;
 
         } catch (error) {
             console.error('解析二进制表格数据时出错:', error);

@@ -29,13 +29,24 @@ export interface TableData {
     rowCount: number;                   // 行数
 }
 
+// 定义多列数据接口
+export interface ColumnData {
+    name: string;
+    data: Float32Array | Float64Array | Int8Array | Int16Array | Int32Array;
+    format: string;
+    unit?: string;
+    dataType: string;
+    repeatCount: number;
+}
+
 // 定义HDU数据接口
 export interface HDUData {
     type: HDUType;
     width?: number;
     height?: number;
     data: Float32Array;
-    tableData?: TableData;  // 新增：表格数据
+    columns?: Map<string, ColumnData>;  // 新增：多列数据支持
+    tableData?: TableData;
     stats: {
         min: number;
         max: number;
@@ -245,11 +256,8 @@ export class FITSDataManager {
         const xtension = hdu.header.getItem('XTENSION')?.value?.trim().toUpperCase();
         const type = xtension === 'BINTABLE' ? HDUType.BINTABLE : HDUType.TABLE;
 
-        // 创建表格数据对象
-        const tableData: TableData = {
-            columns: new Map(),
-            rowCount: naxis2
-        };
+        // 创建列数据Map
+        const columns = new Map<string, ColumnData>();
 
         // 收集列信息
         for (let i = 1; i <= tfields; i++) {
@@ -263,33 +271,33 @@ export class FITSDataManager {
                     const repeatCount = match[1] ? parseInt(match[1]) : 1;
                     const dataType = match[2];
 
-                    tableData.columns.set(ttype, {
-                        name: ttype,
-                        format: tform,
-                        unit: tunit,
-                        dataType,
-                        repeatCount,
-                        data: hdu.data // 暂时使用原始数据，后续可能需要转换
-                    });
+                    // 获取列数据
+                    const columnData = (hdu.data as any).columns?.get(ttype);
+                    if (columnData) {
+                        columns.set(ttype, columnData);
+                    }
                 }
             }
         }
 
-        // 计算统计信息
+        // 计算统计信息（使用第一列数据）
         let min = Number.MAX_VALUE;
         let max = Number.MIN_VALUE;
         
-        for (const value of hdu.data) {
-            if (isFinite(value)) {
-                min = Math.min(min, value);
-                max = Math.max(max, value);
+        const firstColumn = Array.from(columns.values())[0];
+        if (firstColumn) {
+            for (const value of firstColumn.data) {
+                if (isFinite(value)) {
+                    min = Math.min(min, value);
+                    max = Math.max(max, value);
+                }
             }
         }
 
         return {
             type,
             data: hdu.data,
-            tableData,
+            columns,
             stats: { min, max }
         };
     }
