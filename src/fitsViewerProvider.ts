@@ -392,143 +392,253 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider {
                 throw new Error('无法获取图像数据');
             }
             
-            // 应用缩放变换
+            // 检查图像大小，如果超过阈值，则使用分块处理
+            const isLargeImage = hduData.data.length > 4000000; // 约4百万像素的阈值
+            console.log(`图像大小: ${hduData.data.length} 像素, 使用${isLargeImage ? '分块' : '标准'}处理`);
+            
+            // 创建变换后的数据数组
             const transformedData = new Float32Array(hduData.data.length);
             const min = hduData.stats.min;
             const max = hduData.stats.max;
             
-            // 对数据进行缩放变换
-            switch (scaleType) {
-                case 'linear':
-                    transformedData.set(hduData.data);
-                    break;
-                    
-                case 'log':
-                    // 对数变换
-                    const offset = min <= 0 ? -min + 1 : 0;
-                    for (let i = 0; i < hduData.data.length; i++) {
-                        transformedData[i] = Math.log(hduData.data[i] + offset);
-                    }
-                    break;
-                    
-                case 'sqrt':
-                    // 平方根变换
-                    const sqrtOffset = min < 0 ? -min : 0;
-                    for (let i = 0; i < hduData.data.length; i++) {
-                        transformedData[i] = Math.sqrt(hduData.data[i] + sqrtOffset);
-                    }
-                    break;
-                    
-                case 'squared':
-                    // 平方变换
-                    for (let i = 0; i < hduData.data.length; i++) {
-                        transformedData[i] = hduData.data[i] * hduData.data[i];
-                    }
-                    break;
-                    
-                case 'asinh':
-                    // 反双曲正弦变换
-                    for (let i = 0; i < hduData.data.length; i++) {
-                        transformedData[i] = Math.asinh(hduData.data[i]);
-                    }
-                    break;
-                    
-                case 'sinh':
-                    // 双曲正弦变换
-                    for (let i = 0; i < hduData.data.length; i++) {
-                        transformedData[i] = Math.sinh(hduData.data[i]);
-                    }
-                    break;
-                    
-                case 'power':
-                    // 幂律变换 (gamma = 2.0)
-                    const powerOffset = min < 0 ? -min : 0;
-                    const powerScale = 1.0 / (max + powerOffset);
-                    for (let i = 0; i < hduData.data.length; i++) {
-                        const normalizedValue = (hduData.data[i] + powerOffset) * powerScale;
-                        transformedData[i] = Math.pow(normalizedValue, 2.0);
-                    }
-                    break;
-                    
-                case 'histogram':
-                    // 直方图均衡化
-                    const histSize = 256;
-                    const hist = new Array(histSize).fill(0);
-                    const cdf = new Array(histSize).fill(0);
-                    
-                    // 计算直方图
-                    const histScale = histSize / (max - min);
-                    for (let i = 0; i < hduData.data.length; i++) {
-                        const bin = Math.floor((hduData.data[i] - min) * histScale);
-                        if (bin >= 0 && bin < histSize) {
-                            hist[bin]++;
+            // 通知用户处理开始
+            webviewPanel.webview.postMessage({
+                command: 'processingStatus',
+                status: 'start',
+                message: `正在应用${scaleType}变换...`
+            });
+            
+            // 定义批量处理函数
+            const processDataChunk = (data: Float32Array, start: number, end: number, scaleType: string): void => {
+                const chunkSize = end - start;
+                const chunk = data.subarray(start, end);
+                const resultChunk = transformedData.subarray(start, end);
+                
+                switch (scaleType) {
+                    case 'linear':
+                        // 线性变换 - 直接复制
+                        resultChunk.set(chunk);
+                        break;
+                        
+                    case 'log':
+                        // 对数变换 - 使用批量操作
+                        const offset = min <= 0 ? -min + 1 : 0;
+                        if (offset === 0) {
+                            // 如果没有偏移，可以直接使用Math.log
+                            for (let i = 0; i < chunkSize; i++) {
+                                resultChunk[i] = Math.log(chunk[i]);
+                            }
+                        } else {
+                            // 有偏移时，需要先加上偏移
+                            for (let i = 0; i < chunkSize; i++) {
+                                resultChunk[i] = Math.log(chunk[i] + offset);
+                            }
                         }
+                        break;
+                        
+                    case 'sqrt':
+                        // 平方根变换
+                        const sqrtOffset = min < 0 ? -min : 0;
+                        if (sqrtOffset === 0) {
+                            for (let i = 0; i < chunkSize; i++) {
+                                resultChunk[i] = Math.sqrt(chunk[i]);
+                            }
+                        } else {
+                            for (let i = 0; i < chunkSize; i++) {
+                                resultChunk[i] = Math.sqrt(chunk[i] + sqrtOffset);
+                            }
+                        }
+                        break;
+                        
+                    case 'squared':
+                        // 平方变换 - 可以使用批量乘法
+                        for (let i = 0; i < chunkSize; i++) {
+                            resultChunk[i] = chunk[i] * chunk[i];
+                        }
+                        break;
+                        
+                    case 'asinh':
+                        // 反双曲正弦变换
+                        for (let i = 0; i < chunkSize; i++) {
+                            resultChunk[i] = Math.asinh(chunk[i]);
+                        }
+                        break;
+                        
+                    case 'sinh':
+                        // 双曲正弦变换
+                        for (let i = 0; i < chunkSize; i++) {
+                            resultChunk[i] = Math.sinh(chunk[i]);
+                        }
+                        break;
+                        
+                    case 'power':
+                        // 幂律变换 (gamma = 2.0)
+                        const powerOffset = min < 0 ? -min : 0;
+                        const powerScale = 1.0 / (max + powerOffset);
+                        for (let i = 0; i < chunkSize; i++) {
+                            const normalizedValue = (chunk[i] + powerOffset) * powerScale;
+                            resultChunk[i] = Math.pow(normalizedValue, 2.0);
+                        }
+                        break;
+                        
+                    case 'histogram':
+                        // 直方图均衡化 - 这个需要全局处理，不适合分块
+                        // 在外部处理
+                        break;
+                        
+                    case 'zscale':
+                        // z-scale 算法 - 这个也需要全局处理
+                        // 在外部处理
+                        break;
+                        
+                    default:
+                        resultChunk.set(chunk);
+                        break;
+                }
+            };
+            
+            // 特殊处理需要全局数据的变换
+            if (scaleType === 'histogram') {
+                // 直方图均衡化
+                const histSize = 256;
+                const hist = new Uint32Array(histSize);
+                const cdf = new Uint32Array(histSize);
+                
+                // 计算直方图 - 使用整个数据集
+                const histScale = histSize / (max - min);
+                for (let i = 0; i < hduData.data.length; i++) {
+                    const bin = Math.floor((hduData.data[i] - min) * histScale);
+                    if (bin >= 0 && bin < histSize) {
+                        hist[bin]++;
                     }
+                }
+                
+                // 计算累积分布函数
+                cdf[0] = hist[0];
+                for (let i = 1; i < histSize; i++) {
+                    cdf[i] = cdf[i-1] + hist[i];
+                }
+                
+                // 归一化CDF
+                const cdfMin = cdf[0];
+                const cdfMax = cdf[histSize-1];
+                const cdfScale = 1.0 / (cdfMax - cdfMin || 1); // 避免除以零
+                
+                // 应用直方图均衡化 - 可以分块处理
+                const chunkSize = isLargeImage ? 1000000 : hduData.data.length;
+                for (let start = 0; start < hduData.data.length; start += chunkSize) {
+                    const end = Math.min(start + chunkSize, hduData.data.length);
                     
-                    // 计算累积分布函数
-                    cdf[0] = hist[0];
-                    for (let i = 1; i < histSize; i++) {
-                        cdf[i] = cdf[i-1] + hist[i];
-                    }
-                    
-                    // 归一化CDF
-                    const cdfMin = cdf[0];
-                    const cdfMax = cdf[histSize-1];
-                    const cdfScale = 1.0 / (cdfMax - cdfMin);
-                    
-                    // 应用直方图均衡化
-                    for (let i = 0; i < hduData.data.length; i++) {
+                    for (let i = start; i < end; i++) {
                         const bin = Math.floor((hduData.data[i] - min) * histScale);
                         if (bin >= 0 && bin < histSize) {
                             transformedData[i] = (cdf[bin] - cdfMin) * cdfScale;
                         }
                     }
-                    break;
                     
-                case 'zscale':
-                    // z-scale 算法 (简化版本)
-                    const sample = new Float32Array(Math.min(10000, hduData.data.length));
-                    const step = Math.max(1, Math.floor(hduData.data.length / sample.length));
-                    let sampleSize = 0;
-                    
-                    // 采样数据
-                    for (let i = 0; i < hduData.data.length; i += step) {
-                        if (sampleSize < sample.length) {
-                            sample[sampleSize++] = hduData.data[i];
-                        }
+                    // 更新进度
+                    if (isLargeImage) {
+                        const progress = Math.round((end / hduData.data.length) * 100);
+                        webviewPanel.webview.postMessage({
+                            command: 'processingStatus',
+                            status: 'progress',
+                            progress: progress,
+                            message: `直方图均衡化处理中: ${progress}%`
+                        });
+                        
+                        // 给UI线程一些时间更新
+                        await new Promise(resolve => setTimeout(resolve, 0));
                     }
+                }
+            } else if (scaleType === 'zscale') {
+                // z-scale 算法 (简化版本)
+                const sampleSize = Math.min(10000, hduData.data.length);
+                const sample = new Float32Array(sampleSize);
+                const step = Math.max(1, Math.floor(hduData.data.length / sampleSize));
+                
+                // 采样数据
+                for (let i = 0, j = 0; i < hduData.data.length && j < sampleSize; i += step, j++) {
+                    sample[j] = hduData.data[i];
+                }
+                
+                // 计算中位数和标准差
+                const sortedSample = sample.slice(0, sampleSize).sort((a, b) => a - b);
+                const median = sortedSample[Math.floor(sampleSize / 2)];
+                
+                // 计算标准差 - 使用更高效的方法
+                let sumDiff = 0;
+                for (let i = 0; i < sampleSize; i++) {
+                    const diff = sample[i] - median;
+                    sumDiff += diff * diff;
+                }
+                const stdDev = Math.sqrt(sumDiff / sampleSize);
+                
+                // 应用 z-scale 变换
+                const zLow = median - 2.5 * stdDev;
+                const zHigh = median + 2.5 * stdDev;
+                const zScale = 1.0 / (zHigh - zLow || 1); // 避免除以零
+                
+                // 分块处理
+                const chunkSize = isLargeImage ? 1000000 : hduData.data.length;
+                for (let start = 0; start < hduData.data.length; start += chunkSize) {
+                    const end = Math.min(start + chunkSize, hduData.data.length);
                     
-                    // 计算中位数和标准差
-                    const sortedSample = sample.slice(0, sampleSize).sort((a, b) => a - b);
-                    const median = sortedSample[Math.floor(sampleSize / 2)];
-                    let stdDev = 0;
-                    for (let i = 0; i < sampleSize; i++) {
-                        stdDev += (sample[i] - median) * (sample[i] - median);
-                    }
-                    stdDev = Math.sqrt(stdDev / sampleSize);
-                    
-                    // 应用 z-scale 变换
-                    const zLow = median - 2.5 * stdDev;
-                    const zHigh = median + 2.5 * stdDev;
-                    const zScale = 1.0 / (zHigh - zLow);
-                    
-                    for (let i = 0; i < hduData.data.length; i++) {
+                    for (let i = start; i < end; i++) {
                         transformedData[i] = Math.max(0, Math.min(1, (hduData.data[i] - zLow) * zScale));
                     }
-                    break;
                     
-                default:
-                    transformedData.set(hduData.data);
-                    break;
+                    // 更新进度
+                    if (isLargeImage) {
+                        const progress = Math.round((end / hduData.data.length) * 100);
+                        webviewPanel.webview.postMessage({
+                            command: 'processingStatus',
+                            status: 'progress',
+                            progress: progress,
+                            message: `Z-Scale处理中: ${progress}%`
+                        });
+                        
+                        // 给UI线程一些时间更新
+                        await new Promise(resolve => setTimeout(resolve, 0));
+                    }
+                }
+            } else {
+                // 对于其他变换，使用分块处理
+                const chunkSize = isLargeImage ? 1000000 : hduData.data.length;
+                for (let start = 0; start < hduData.data.length; start += chunkSize) {
+                    const end = Math.min(start + chunkSize, hduData.data.length);
+                    
+                    processDataChunk(hduData.data, start, end, scaleType);
+                    
+                    // 更新进度
+                    if (isLargeImage) {
+                        const progress = Math.round((end / hduData.data.length) * 100);
+                        webviewPanel.webview.postMessage({
+                            command: 'processingStatus',
+                            status: 'progress',
+                            progress: progress,
+                            message: `${scaleType}变换处理中: ${progress}%`
+                        });
+                        
+                        // 给UI线程一些时间更新
+                        await new Promise(resolve => setTimeout(resolve, 0));
+                    }
+                }
             }
             
             // 计算变换后的数据范围
             let newMin = Number.POSITIVE_INFINITY;
             let newMax = Number.NEGATIVE_INFINITY;
-            for (let i = 0; i < transformedData.length; i++) {
-                if (isFinite(transformedData[i])) {
-                    newMin = Math.min(newMin, transformedData[i]);
-                    newMax = Math.max(newMax, transformedData[i]);
+            
+            // 分块计算最小值和最大值
+            const statsChunkSize = 1000000; // 每次处理100万个元素
+            for (let start = 0; start < transformedData.length; start += statsChunkSize) {
+                const end = Math.min(start + statsChunkSize, transformedData.length);
+                
+                for (let i = start; i < end; i++) {
+                    if (isFinite(transformedData[i])) {
+                        newMin = Math.min(newMin, transformedData[i]);
+                        newMax = Math.max(newMax, transformedData[i]);
+                    }
                 }
             }
             
@@ -551,6 +661,13 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider {
                 metadataBuffer,
                 dataBuffer
             ]);
+            
+            // 通知用户处理完成
+            webviewPanel.webview.postMessage({
+                command: 'processingStatus',
+                status: 'complete',
+                message: '变换处理完成，正在准备图像...'
+            });
             
             const tempFilePath = await this.dataManager.createTempFile(fileUri, combinedBuffer);
             

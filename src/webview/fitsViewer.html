@@ -294,6 +294,50 @@
             background-color: var(--vscode-panel-background);
             border: 1px solid var(--vscode-border);
         }
+        
+        /* 添加处理状态样式 */
+        .processing-status {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: var(--vscode-dropdown-background);
+            color: var(--vscode-dropdown-foreground);
+            padding: 15px;
+            border-radius: 4px;
+            font-size: 14px;
+            z-index: 1000;
+            border: 1px solid var(--vscode-border);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            width: 300px;
+            text-align: center;
+        }
+        
+        .processing-message {
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        
+        .progress-container {
+            width: 100%;
+            height: 10px;
+            background-color: var(--vscode-input-background);
+            border-radius: 5px;
+            overflow: hidden;
+            margin-bottom: 5px;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            background-color: var(--vscode-button-background);
+            transition: width 0.3s ease;
+        }
+        
+        .progress-text {
+            font-size: 12px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -383,6 +427,14 @@
         <div id="debug-info" class="debug-info">调试信息：<br>初始化中...</div>
         <div id="zoom-pan-hint" class="zoom-pan-hint" style="display: none;">滚轮：缩放 | 左键拖动：平移</div>
         <div id="zoom-indicator" class="zoom-indicator" style="display: none;">缩放: 100%</div>
+        <!-- 添加处理状态显示 -->
+        <div id="processing-status" class="processing-status" style="display: none;">
+            <div class="processing-message">处理中...</div>
+            <div class="progress-container">
+                <div id="progress-bar" class="progress-bar"></div>
+            </div>
+            <div id="progress-text" class="progress-text">0%</div>
+        </div>
     </div>
 
 
@@ -583,6 +635,22 @@
             ctx.translate(panOffsetX, panOffsetY);
             ctx.scale(zoomLevel, zoomLevel);
             
+            // 检查图像大小，如果超过阈值，则使用分块处理
+            const isLargeImage = currentImageData.width * currentImageData.height > 4000000; // 约4百万像素的阈值
+            
+            if (isLargeImage) {
+                // 使用分块处理大图像
+                renderLargeImageWithChunks();
+            } else {
+                // 使用标准方法处理小图像
+                renderStandardImage();
+            }
+            
+            ctx.restore();
+        }
+        
+        // 标准图像渲染方法
+        function renderStandardImage() {
             // 创建ImageData对象
             const tempCanvas = document.createElement('canvas');
             tempCanvas.width = currentImageData.width;
@@ -624,8 +692,111 @@
                 log(`渲染图像时出错: ${error.message}`);
                 document.getElementById('image-placeholder').textContent = `渲染图像时出错: ${error.message}`;
             }
-            
-            ctx.restore();
+        }
+        
+        // 分块渲染大图像
+        function renderLargeImageWithChunks() {
+            try {
+                // 创建临时Canvas
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = currentImageData.width;
+                tempCanvas.height = currentImageData.height;
+                const tempCtx = tempCanvas.getContext('2d');
+                
+                // 计算缩放因子
+                const scale = 255 / (currentImageData.max - currentImageData.min);
+                
+                // 计算可见区域在原始图像中的范围
+                const visibleLeft = Math.max(0, Math.floor(-panOffsetX / zoomLevel));
+                const visibleTop = Math.max(0, Math.floor(-panOffsetY / zoomLevel));
+                const visibleRight = Math.min(currentImageData.width, Math.ceil((canvas.width - panOffsetX) / zoomLevel));
+                const visibleBottom = Math.min(currentImageData.height, Math.ceil((canvas.height - panOffsetY) / zoomLevel));
+                
+                // 计算可见区域的宽度和高度
+                const visibleWidth = visibleRight - visibleLeft;
+                const visibleHeight = visibleBottom - visibleTop;
+                
+                // 如果可见区域很小，只渲染可见部分
+                if (visibleWidth > 0 && visibleHeight > 0 && visibleWidth * visibleHeight < currentImageData.width * currentImageData.height / 2) {
+                    // 创建可见区域的ImageData
+                    const visibleImageData = tempCtx.createImageData(visibleWidth, visibleHeight);
+                    const rgbaData = new Uint8ClampedArray(visibleWidth * visibleHeight * 4);
+                    
+                    // 处理可见区域的像素
+                    for (let y = 0; y < visibleHeight; y++) {
+                        for (let x = 0; x < visibleWidth; x++) {
+                            const srcIdx = (y + visibleTop) * currentImageData.width + (x + visibleLeft);
+                            const destIdx = (y * visibleWidth + x) * 4;
+                            
+                            // 计算缩放后的灰度值
+                            const scaledValue = Math.max(0, Math.min(255, Math.round((currentImageData.data[srcIdx] - currentImageData.min) * scale)));
+                            
+                            // 设置 RGBA 值
+                            rgbaData[destIdx] = scaledValue;     // R
+                            rgbaData[destIdx + 1] = scaledValue; // G
+                            rgbaData[destIdx + 2] = scaledValue; // B
+                            rgbaData[destIdx + 3] = 255;         // A
+                        }
+                    }
+                    
+                    // 设置ImageData
+                    visibleImageData.data.set(rgbaData);
+                    
+                    // 将可见区域绘制到临时Canvas
+                    tempCtx.putImageData(visibleImageData, visibleLeft, visibleTop);
+                    
+                    // 将临时Canvas绘制到主Canvas
+                    ctx.drawImage(tempCanvas, 0, 0);
+                    
+                    log(`已渲染可见区域: ${visibleWidth}x${visibleHeight} 像素`);
+                } else {
+                    // 分块处理整个图像
+                    const chunkSize = 1000; // 每块的像素行数
+                    
+                    // 创建整个图像的ImageData
+                    const fullImageData = tempCtx.createImageData(currentImageData.width, currentImageData.height);
+                    const fullData = new Uint8ClampedArray(currentImageData.width * currentImageData.height * 4);
+                    
+                    // 分块处理
+                    for (let startY = 0; startY < currentImageData.height; startY += chunkSize) {
+                        const endY = Math.min(startY + chunkSize, currentImageData.height);
+                        const chunkHeight = endY - startY;
+                        
+                        // 处理当前块的像素
+                        for (let y = startY; y < endY; y++) {
+                            const rowOffset = y * currentImageData.width;
+                            
+                            for (let x = 0; x < currentImageData.width; x++) {
+                                const srcIdx = rowOffset + x;
+                                const destIdx = srcIdx * 4;
+                                
+                                // 计算缩放后的灰度值
+                                const scaledValue = Math.max(0, Math.min(255, Math.round((currentImageData.data[srcIdx] - currentImageData.min) * scale)));
+                                
+                                // 设置 RGBA 值
+                                fullData[destIdx] = scaledValue;     // R
+                                fullData[destIdx + 1] = scaledValue; // G
+                                fullData[destIdx + 2] = scaledValue; // B
+                                fullData[destIdx + 3] = 255;         // A
+                            }
+                        }
+                    }
+                    
+                    // 设置ImageData
+                    fullImageData.data.set(fullData);
+                    
+                    // 将ImageData绘制到临时Canvas
+                    tempCtx.putImageData(fullImageData, 0, 0);
+                    
+                    // 将临时Canvas绘制到主Canvas
+                    ctx.drawImage(tempCanvas, 0, 0);
+                    
+                    log(`已渲染完整图像: ${currentImageData.width}x${currentImageData.height} 像素`);
+                }
+            } catch (error) {
+                log(`分块渲染图像时出错: ${error.message}`);
+                document.getElementById('image-placeholder').textContent = `渲染图像时出错: ${error.message}`;
+            }
         }
         
         // 渲染预览图
@@ -652,17 +823,39 @@
             // 清除预览Canvas
             previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
             
-            // 创建ImageData对象
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = currentImageData.width;
-            tempCanvas.height = currentImageData.height;
-            const tempCtx = tempCanvas.getContext('2d');
-            const imageData = tempCtx.createImageData(currentImageData.width, currentImageData.height);
+            // 检查图像大小，如果超过阈值，则使用下采样方法
+            const isLargeImage = currentImageData.width * currentImageData.height > 4000000; // 约4百万像素的阈值
             
-            // 计算缩放因子
-            const dataScale = 255 / (currentImageData.max - currentImageData.min);
+            if (isLargeImage) {
+                // 使用下采样方法渲染大图像预览
+                renderLargeImagePreview(scale, offsetX, offsetY);
+            } else {
+                // 使用标准方法渲染小图像预览
+                renderStandardPreview(scale, offsetX, offsetY);
+            }
             
+            // 存储预览图的缩放和偏移信息，用于计算视口位置
+            previewCanvas.dataset.scale = scale;
+            previewCanvas.dataset.offsetX = offsetX;
+            previewCanvas.dataset.offsetY = offsetY;
+            
+            // 更新预览图中的视口
+            updatePreviewViewport();
+        }
+        
+        // 标准预览图渲染方法
+        function renderStandardPreview(scale, offsetX, offsetY) {
             try {
+                // 创建ImageData对象
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = currentImageData.width;
+                tempCanvas.height = currentImageData.height;
+                const tempCtx = tempCanvas.getContext('2d');
+                const imageData = tempCtx.createImageData(currentImageData.width, currentImageData.height);
+                
+                // 计算缩放因子
+                const dataScale = 255 / (currentImageData.max - currentImageData.min);
+                
                 // 使用 TypedArray 和向量化操作处理图像数据
                 const pixelCount = currentImageData.width * currentImageData.height;
                 const rgbaData = new Uint8ClampedArray(pixelCount * 4);
@@ -690,17 +883,83 @@
                 previewCtx.drawImage(tempCanvas, offsetX, offsetY, 
                                     currentImageData.width * scale, 
                                     currentImageData.height * scale);
-                
-                // 存储预览图的缩放和偏移信息，用于计算视口位置
-                previewCanvas.dataset.scale = scale;
-                previewCanvas.dataset.offsetX = offsetX;
-                previewCanvas.dataset.offsetY = offsetY;
-                
-                // 更新预览图中的视口
-                updatePreviewViewport();
-                
             } catch (error) {
                 log(`渲染预览图时出错: ${error.message}`);
+            }
+        }
+        
+        // 大图像预览渲染方法（使用下采样）
+        function renderLargeImagePreview(scale, offsetX, offsetY) {
+            try {
+                // 计算下采样因子，确保预览图不会太大
+                const downsampleFactor = Math.max(1, Math.ceil(Math.sqrt(currentImageData.width * currentImageData.height / 250000)));
+                
+                // 计算下采样后的尺寸
+                const sampledWidth = Math.ceil(currentImageData.width / downsampleFactor);
+                const sampledHeight = Math.ceil(currentImageData.height / downsampleFactor);
+                
+                log(`预览图下采样: 原始=${currentImageData.width}x${currentImageData.height}, 采样因子=${downsampleFactor}, 采样后=${sampledWidth}x${sampledHeight}`);
+                
+                // 创建下采样后的Canvas
+                const sampledCanvas = document.createElement('canvas');
+                sampledCanvas.width = sampledWidth;
+                sampledCanvas.height = sampledHeight;
+                const sampledCtx = sampledCanvas.getContext('2d');
+                const sampledImageData = sampledCtx.createImageData(sampledWidth, sampledHeight);
+                
+                // 计算缩放因子
+                const dataScale = 255 / (currentImageData.max - currentImageData.min);
+                
+                // 下采样处理
+                const sampledData = new Uint8ClampedArray(sampledWidth * sampledHeight * 4);
+                
+                for (let y = 0; y < sampledHeight; y++) {
+                    for (let x = 0; x < sampledWidth; x++) {
+                        // 计算原始图像中的对应区域
+                        const srcX = x * downsampleFactor;
+                        const srcY = y * downsampleFactor;
+                        
+                        // 计算区域平均值
+                        let sum = 0;
+                        let count = 0;
+                        
+                        for (let dy = 0; dy < downsampleFactor && srcY + dy < currentImageData.height; dy++) {
+                            for (let dx = 0; dx < downsampleFactor && srcX + dx < currentImageData.width; dx++) {
+                                const srcIdx = (srcY + dy) * currentImageData.width + (srcX + dx);
+                                sum += currentImageData.data[srcIdx];
+                                count++;
+                            }
+                        }
+                        
+                        // 计算平均值
+                        const avgValue = count > 0 ? sum / count : 0;
+                        
+                        // 计算缩放后的灰度值
+                        const scaledValue = Math.max(0, Math.min(255, Math.round((avgValue - currentImageData.min) * dataScale)));
+                        
+                        // 设置采样后的像素值
+                        const destIdx = (y * sampledWidth + x) * 4;
+                        sampledData[destIdx] = scaledValue;     // R
+                        sampledData[destIdx + 1] = scaledValue; // G
+                        sampledData[destIdx + 2] = scaledValue; // B
+                        sampledData[destIdx + 3] = 255;         // A
+                    }
+                }
+                
+                // 设置采样后的图像数据
+                sampledImageData.data.set(sampledData);
+                sampledCtx.putImageData(sampledImageData, 0, 0);
+                
+                // 计算预览图中的绘制尺寸
+                const previewWidth = currentImageData.width * scale;
+                const previewHeight = currentImageData.height * scale;
+                
+                // 将采样后的Canvas绘制到预览Canvas
+                previewCtx.drawImage(sampledCanvas, offsetX, offsetY, previewWidth, previewHeight);
+                
+                log('大图像预览渲染完成');
+            } catch (error) {
+                log(`渲染大图像预览时出错: ${error.message}`);
             }
         }
         
@@ -876,6 +1135,10 @@
                     
                     // 渲染光谱数据
                     renderSpectrum(message.data);
+                    break;
+                    
+                case 'processingStatus':
+                    handleProcessingStatus(message);
                     break;
             }
         });
@@ -1323,6 +1586,57 @@
             }
 
             log('光谱数据渲染完成');
+        }
+
+        // 处理处理状态消息
+        function handleProcessingStatus(message) {
+            const processingStatus = document.getElementById('processing-status');
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+            const processingMessage = document.querySelector('.processing-message');
+            
+            switch (message.status) {
+                case 'start':
+                    // 显示处理状态
+                    processingStatus.style.display = 'block';
+                    progressBar.style.width = '0%';
+                    progressText.textContent = '0%';
+                    processingMessage.textContent = message.message || '处理中...';
+                    break;
+                    
+                case 'progress':
+                    // 更新进度
+                    processingStatus.style.display = 'block';
+                    progressBar.style.width = `${message.progress}%`;
+                    progressText.textContent = `${message.progress}%`;
+                    if (message.message) {
+                        processingMessage.textContent = message.message;
+                    }
+                    break;
+                    
+                case 'complete':
+                    // 完成处理
+                    progressBar.style.width = '100%';
+                    progressText.textContent = '100%';
+                    if (message.message) {
+                        processingMessage.textContent = message.message;
+                    }
+                    // 短暂显示完成状态后隐藏
+                    setTimeout(() => {
+                        processingStatus.style.display = 'none';
+                    }, 1000);
+                    break;
+                    
+                case 'error':
+                    // 显示错误
+                    processingStatus.style.display = 'block';
+                    processingMessage.textContent = message.message || '处理出错';
+                    // 短暂显示错误状态后隐藏
+                    setTimeout(() => {
+                        processingStatus.style.display = 'none';
+                    }, 3000);
+                    break;
+            }
         }
     </script>
 </body>
