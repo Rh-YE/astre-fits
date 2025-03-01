@@ -95,7 +95,15 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider {
         token: vscode.CancellationToken
     ): Promise<vscode.CustomDocument> {
         console.log(`正在打开文件: ${uri.fsPath}`);
-        return { uri, dispose: () => { } };
+        try {
+            // 验证文件是否存在
+            await vscode.workspace.fs.stat(uri);
+            console.log('文件存在，继续处理');
+            return { uri, dispose: () => { } };
+        } catch (error) {
+            console.error(`打开文件失败: ${error}`);
+            throw error;
+        }
     }
 
     async resolveCustomEditor(
@@ -161,22 +169,27 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider {
     }
 
     private async loadFITS(fileUri: vscode.Uri): Promise<FITS> {
+        console.log('开始加载FITS文件...');
         try {
             // 读取FITS文件
+            console.log(`尝试读取文件: ${fileUri.fsPath}`);
             const fitsData = await fs.promises.readFile(fileUri.fsPath);
             console.log(`已读取FITS文件，大小: ${fitsData.length} 字节`);
             
-            // 解析FITS文件
+            console.log('开始解析FITS数据...');
             const parser = new FITSParser();
             const fits = parser.parseFITS(new Uint8Array(fitsData));
+            console.log('FITS数据解析完成');
             
             // 加载到数据管理器
+            console.log('正在加载到数据管理器...');
             await this.dataManager.loadFITS(fileUri, fits);
             this.currentFileUri = fileUri;
+            console.log('FITS文件加载完成');
             
             return fits;
         } catch (error) {
-            console.error('解析FITS文件时出错:', error);
+            console.error(`加载FITS文件失败: ${error}`);
             throw error;
         }
     }
@@ -379,18 +392,159 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider {
                 throw new Error('无法获取图像数据');
             }
             
+            // 应用缩放变换
+            const transformedData = new Float32Array(hduData.data.length);
+            const min = hduData.stats.min;
+            const max = hduData.stats.max;
+            
+            // 对数据进行缩放变换
+            switch (scaleType) {
+                case 'linear':
+                    transformedData.set(hduData.data);
+                    break;
+                    
+                case 'log':
+                    // 对数变换
+                    const offset = min <= 0 ? -min + 1 : 0;
+                    for (let i = 0; i < hduData.data.length; i++) {
+                        transformedData[i] = Math.log(hduData.data[i] + offset);
+                    }
+                    break;
+                    
+                case 'sqrt':
+                    // 平方根变换
+                    const sqrtOffset = min < 0 ? -min : 0;
+                    for (let i = 0; i < hduData.data.length; i++) {
+                        transformedData[i] = Math.sqrt(hduData.data[i] + sqrtOffset);
+                    }
+                    break;
+                    
+                case 'squared':
+                    // 平方变换
+                    for (let i = 0; i < hduData.data.length; i++) {
+                        transformedData[i] = hduData.data[i] * hduData.data[i];
+                    }
+                    break;
+                    
+                case 'asinh':
+                    // 反双曲正弦变换
+                    for (let i = 0; i < hduData.data.length; i++) {
+                        transformedData[i] = Math.asinh(hduData.data[i]);
+                    }
+                    break;
+                    
+                case 'sinh':
+                    // 双曲正弦变换
+                    for (let i = 0; i < hduData.data.length; i++) {
+                        transformedData[i] = Math.sinh(hduData.data[i]);
+                    }
+                    break;
+                    
+                case 'power':
+                    // 幂律变换 (gamma = 2.0)
+                    const powerOffset = min < 0 ? -min : 0;
+                    const powerScale = 1.0 / (max + powerOffset);
+                    for (let i = 0; i < hduData.data.length; i++) {
+                        const normalizedValue = (hduData.data[i] + powerOffset) * powerScale;
+                        transformedData[i] = Math.pow(normalizedValue, 2.0);
+                    }
+                    break;
+                    
+                case 'histogram':
+                    // 直方图均衡化
+                    const histSize = 256;
+                    const hist = new Array(histSize).fill(0);
+                    const cdf = new Array(histSize).fill(0);
+                    
+                    // 计算直方图
+                    const histScale = histSize / (max - min);
+                    for (let i = 0; i < hduData.data.length; i++) {
+                        const bin = Math.floor((hduData.data[i] - min) * histScale);
+                        if (bin >= 0 && bin < histSize) {
+                            hist[bin]++;
+                        }
+                    }
+                    
+                    // 计算累积分布函数
+                    cdf[0] = hist[0];
+                    for (let i = 1; i < histSize; i++) {
+                        cdf[i] = cdf[i-1] + hist[i];
+                    }
+                    
+                    // 归一化CDF
+                    const cdfMin = cdf[0];
+                    const cdfMax = cdf[histSize-1];
+                    const cdfScale = 1.0 / (cdfMax - cdfMin);
+                    
+                    // 应用直方图均衡化
+                    for (let i = 0; i < hduData.data.length; i++) {
+                        const bin = Math.floor((hduData.data[i] - min) * histScale);
+                        if (bin >= 0 && bin < histSize) {
+                            transformedData[i] = (cdf[bin] - cdfMin) * cdfScale;
+                        }
+                    }
+                    break;
+                    
+                case 'zscale':
+                    // z-scale 算法 (简化版本)
+                    const sample = new Float32Array(Math.min(10000, hduData.data.length));
+                    const step = Math.max(1, Math.floor(hduData.data.length / sample.length));
+                    let sampleSize = 0;
+                    
+                    // 采样数据
+                    for (let i = 0; i < hduData.data.length; i += step) {
+                        if (sampleSize < sample.length) {
+                            sample[sampleSize++] = hduData.data[i];
+                        }
+                    }
+                    
+                    // 计算中位数和标准差
+                    const sortedSample = sample.slice(0, sampleSize).sort((a, b) => a - b);
+                    const median = sortedSample[Math.floor(sampleSize / 2)];
+                    let stdDev = 0;
+                    for (let i = 0; i < sampleSize; i++) {
+                        stdDev += (sample[i] - median) * (sample[i] - median);
+                    }
+                    stdDev = Math.sqrt(stdDev / sampleSize);
+                    
+                    // 应用 z-scale 变换
+                    const zLow = median - 2.5 * stdDev;
+                    const zHigh = median + 2.5 * stdDev;
+                    const zScale = 1.0 / (zHigh - zLow);
+                    
+                    for (let i = 0; i < hduData.data.length; i++) {
+                        transformedData[i] = Math.max(0, Math.min(1, (hduData.data[i] - zLow) * zScale));
+                    }
+                    break;
+                    
+                default:
+                    transformedData.set(hduData.data);
+                    break;
+            }
+            
+            // 计算变换后的数据范围
+            let newMin = Number.POSITIVE_INFINITY;
+            let newMax = Number.NEGATIVE_INFINITY;
+            for (let i = 0; i < transformedData.length; i++) {
+                if (isFinite(transformedData[i])) {
+                    newMin = Math.min(newMin, transformedData[i]);
+                    newMax = Math.max(newMax, transformedData[i]);
+                }
+            }
+            
             // 创建临时文件
             const metadataBuffer = Buffer.from(JSON.stringify({
                 width: hduData.width,
                 height: hduData.height,
-                min: hduData.stats.min,
-                max: hduData.stats.max
+                min: newMin,
+                max: newMax,
+                scaleType: scaleType
             }));
             
             const headerLengthBuffer = Buffer.alloc(4);
             headerLengthBuffer.writeUInt32LE(metadataBuffer.length, 0);
             
-            const dataBuffer = Buffer.from(hduData.data.buffer);
+            const dataBuffer = Buffer.from(transformedData.buffer);
             
             const combinedBuffer = Buffer.concat([
                 headerLengthBuffer,

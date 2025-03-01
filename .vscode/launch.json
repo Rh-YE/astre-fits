@@ -45,6 +45,23 @@
 			"outFiles": [
 				"${workspaceFolder}/dist/**/*.js"
 			]
+		},
+		{
+			"name": "调试FITS查看器",
+			"type": "extensionHost",
+			"request": "launch",
+			"args": [
+				"--extensionDevelopmentPath=${workspaceFolder}"
+			],
+			"outFiles": [
+				"${workspaceFolder}/out/**/*.js"
+			],
+			"preLaunchTask": "npm: watch",
+			"trace": true,
+			"internalConsoleOptions": "openOnSessionStart",
+			"env": {
+				"VSCODE_DEBUG_MODE": "true"
+			}
 		}
 	]
 }
