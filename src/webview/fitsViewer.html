@@ -194,6 +194,18 @@
             flex-shrink: 0; /* 防止被压缩 */
         }
         
+        .scale-buttons-group {
+            display: flex;
+            align-items: center;
+            overflow-x: auto;
+        }
+        
+        .spectrum-controls {
+            display: flex;
+            align-items: center;
+            overflow-x: auto;
+        }
+        
         .scale-button {
             padding: 3px 8px;
             margin-right: 5px;
@@ -491,16 +503,35 @@
         <div class="controls-container">
             <!-- 第三行：缩放控制区 -->
             <div class="scale-controls">
-                <div class="scale-button active" data-scale="linear">linear</div>
-                <div class="scale-button" data-scale="log">log</div>
-                <div class="scale-button" data-scale="power">power</div>
-                <div class="scale-button" data-scale="sqrt">sqrt</div>
-                <div class="scale-button" data-scale="squared">squared</div>
-                <div class="scale-button" data-scale="asinh">asinh</div>
-                <div class="scale-button" data-scale="sinh">sinh</div>
-                <div class="scale-button" data-scale="histogram">histogram</div>
-                <div class="scale-button" data-scale="minmax">min max</div>
-                <div class="scale-button" data-scale="zscale">zscale</div>
+                <!-- 图像缩放按钮组 -->
+                <div id="image-scale-buttons" class="scale-buttons-group">
+                    <div class="scale-button active" data-scale="linear">linear</div>
+                    <div class="scale-button" data-scale="log">log</div>
+                    <div class="scale-button" data-scale="power">power</div>
+                    <div class="scale-button" data-scale="sqrt">sqrt</div>
+                    <div class="scale-button" data-scale="squared">squared</div>
+                    <div class="scale-button" data-scale="asinh">asinh</div>
+                    <div class="scale-button" data-scale="sinh">sinh</div>
+                    <div class="scale-button" data-scale="histogram">histogram</div>
+                    <div class="scale-button" data-scale="minmax">min max</div>
+                    <div class="scale-button" data-scale="zscale">zscale</div>
+                </div>
+                
+                <!-- 光谱列选择器 - 默认隐藏 -->
+                <div id="spectrum-column-selectors" class="spectrum-controls" style="display: none;">
+                    <div style="display: flex; align-items: center; margin-right: 15px;">
+                        <span style="margin-right: 5px; color: var(--vscode-foreground);">波长: </span>
+                        <select id="wavelength-column-selector" style="background-color: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); border: 1px solid var(--vscode-dropdown-border); padding: 3px; border-radius: 2px; min-width: 120px;">
+                            <option value="">未选择</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; align-items: center;">
+                        <span style="margin-right: 5px; color: var(--vscode-foreground);">流量: </span>
+                        <select id="flux-column-selector" style="background-color: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); border: 1px solid var(--vscode-dropdown-border); padding: 3px; border-radius: 2px; min-width: 120px;">
+                            <option value="">未选择</option>
+                        </select>
+                    </div>
+                </div>
                 
                 <!-- HDU选择器移到这里 -->
                 <div style="margin-left: auto; display: flex; align-items: center;">
@@ -554,6 +585,12 @@
         let maxChannel = 0;
         let currentAxesOrder = [0, 1, 2]; // 默认轴顺序：[通道, 行, 列] - 使用值"0,1,2"对应的轴顺序"1 2 3"
         let originalImageData = null; // 存储原始多维数据
+        
+        // 光谱数据相关变量
+        let currentSpectrumData = null; // 存储当前光谱数据
+        let availableColumns = []; // 存储可用的列
+        let selectedWavelengthColumn = ""; // 当前选择的波长列
+        let selectedFluxColumn = ""; // 当前选择的流量列
         
         // 预览图相关变量
         let previewCanvas = null;
@@ -898,23 +935,34 @@
             if (mouseX >= margin.left && mouseX <= (spectrumCanvas.width - margin.right) &&
                 mouseY >= margin.top && mouseY <= (spectrumCanvas.height - margin.bottom)) {
                 
-                // 计算鼠标在缩放前的图表坐标系中的位置
-                const oldX = (mouseX - margin.left - spectrumPanOffsetX) / spectrumZoomLevel;
-                const oldY = (mouseY - margin.top - spectrumPanOffsetY) / spectrumZoomLevel;
+                // 获取数据范围
+                const data = JSON.parse(spectrumData);
+                const minX = Math.min(...data.wavelength);
+                const maxX = Math.max(...data.wavelength);
+                const plotWidth = spectrumCanvas.width - margin.left - margin.right;
+                
+                // 计算当前可见数据范围
+                const scaleX = plotWidth / (maxX - minX);
+                const visibleMinX = minX + spectrumPanOffsetX / (scaleX * spectrumZoomLevel);
+                
+                // 计算鼠标在数据坐标系中的位置
+                const mouseDataX = visibleMinX + (mouseX - margin.left) / (scaleX * spectrumZoomLevel);
                 
                 // 更新缩放级别
                 spectrumZoomLevel = newZoomLevel;
                 
-                // 计算新的偏移量，使鼠标位置保持不变
-                spectrumPanOffsetX = mouseX - margin.left - oldX * spectrumZoomLevel;
-                spectrumPanOffsetY = mouseY - margin.top - oldY * spectrumZoomLevel;
+                // 计算新的可见数据范围，保持鼠标指向的数据点不变
+                const newScaleX = plotWidth / (maxX - minX);
+                const newVisibleMinX = mouseDataX - (mouseX - margin.left) / (newScaleX * spectrumZoomLevel);
+                
+                // 更新平移偏移量，使鼠标位置保持在同一数据点上
+                spectrumPanOffsetX = (newVisibleMinX - minX) * newScaleX * spectrumZoomLevel;
                 
                 // 重新渲染光谱
-                const data = JSON.parse(spectrumData);
                 renderSpectrum(data, true);
                 
                 // 显示缩放指示器
-                // showZoomIndicator(spectrumZoomLevel);
+                showZoomIndicator(spectrumZoomLevel);
             }
         });
         
@@ -1007,7 +1055,7 @@
                     
                     if (dataIndex >= 0 && dataIndex < data.flux.length) {
                         // 更新坐标和值显示
-                        document.getElementById('image-coords-x').textContent = dataIndex;
+                        document.getElementById('image-coords-x').textContent = data.wavelength[dataIndex].toFixed(2);
                         document.getElementById('image-coords-y').textContent = '-';
                         document.getElementById('pixel-value').textContent = data.flux[dataIndex].toString();
                         
@@ -1672,9 +1720,22 @@
                     document.getElementById('wcs-value-1').textContent = '-';
                     document.getElementById('wcs-value-2').textContent = '-';
                     
+                    // 隐藏图像缩放按钮，显示光谱列选择器
+                    document.getElementById('image-scale-buttons').style.display = 'none';
+                    document.getElementById('spectrum-column-selectors').style.display = 'flex';
+                    
                     log('Canvas显示状态已切换');
                     log(`收到的光谱数据: 波长点数=${message.data.wavelength.length}, 流量点数=${message.data.flux.length}`);
                     log(`单位信息: 波长=${message.data.wavelengthUnit}, 流量=${message.data.fluxUnit}`);
+                    
+                    // 保存光谱数据
+                    currentSpectrumData = message.data;
+                    
+                    // 如果有可用列信息，填充列选择器
+                    if (message.columns && message.columns.length > 0) {
+                        availableColumns = message.columns;
+                        updateColumnSelectors(message.columns, message.wavelengthColumn, message.fluxColumn);
+                    }
                     
                     // 重置缩放和平移状态
                     spectrumZoomLevel = 1.0;
@@ -1686,6 +1747,18 @@
                     
                     // 显示缩放和平移提示
                     showTemporaryMessage('滚轮：缩放 | 左键拖动：平移');
+                    break;
+                    
+                case 'setControlsVisibility':
+                    log(`设置控件可见性: 图像控件=${message.showImageControls}, 光谱控件=${message.showSpectrumControls}`);
+                    
+                    // 设置图像缩放按钮的可见性
+                    document.getElementById('image-scale-buttons').style.display = 
+                        message.showImageControls ? 'flex' : 'none';
+                    
+                    // 设置光谱列选择器的可见性
+                    document.getElementById('spectrum-column-selectors').style.display = 
+                        message.showSpectrumControls ? 'flex' : 'none';
                     break;
             }
         });
@@ -2667,6 +2740,93 @@
             viewport.style.width = `${Math.max(5, vpWidth)}px`; // 确保视口宽度至少为5像素
             viewport.style.height = `${previewHeight}px`;
             viewport.style.display = 'block';
+        }
+
+        // 更新HDU选择器
+        function updateHDUSelector(count) {
+            const selector = document.getElementById('hdu-selector');
+            selector.innerHTML = '';
+            
+            for (let i = 0; i < count; i++) {
+                const option = document.createElement('option');
+                option.value = i;
+                option.textContent = `HDU ${i}`;
+                selector.appendChild(option);
+            }
+            
+            // 添加选择事件
+            selector.addEventListener('change', () => {
+                const hduIndex = parseInt(selector.value);
+                log(`切换到HDU ${hduIndex}`);
+                vscode.postMessage({
+                    command: 'switchHDU',
+                    hduIndex: hduIndex
+                });
+            });
+        }
+        
+        // 更新列选择器
+        function updateColumnSelectors(columns, defaultWavelength, defaultFlux) {
+            const wavelengthSelector = document.getElementById('wavelength-column-selector');
+            const fluxSelector = document.getElementById('flux-column-selector');
+            
+            // 清空选择器
+            wavelengthSelector.innerHTML = '<option value="">未选择</option>';
+            fluxSelector.innerHTML = '<option value="">未选择</option>';
+            
+            // 填充选项
+            columns.forEach((column, index) => {
+                const name = column.name || `列 ${index}`;
+                const value = column.name || index.toString();
+                
+                // 添加到波长选择器
+                const wOption = document.createElement('option');
+                wOption.value = value;
+                wOption.textContent = name;
+                wavelengthSelector.appendChild(wOption);
+                
+                // 添加到流量选择器
+                const fOption = document.createElement('option');
+                fOption.value = value;
+                fOption.textContent = name;
+                fluxSelector.appendChild(fOption);
+            });
+            
+            // 设置默认选中项
+            if (defaultWavelength) {
+                wavelengthSelector.value = defaultWavelength;
+                selectedWavelengthColumn = defaultWavelength;
+            }
+            
+            if (defaultFlux) {
+                fluxSelector.value = defaultFlux;
+                selectedFluxColumn = defaultFlux;
+            }
+            
+            // 添加变更事件
+            wavelengthSelector.addEventListener('change', () => {
+                selectedWavelengthColumn = wavelengthSelector.value;
+                updateSpectrumWithSelectedColumns();
+            });
+            
+            fluxSelector.addEventListener('change', () => {
+                selectedFluxColumn = fluxSelector.value;
+                updateSpectrumWithSelectedColumns();
+            });
+        }
+        
+        // 根据选择的列更新光谱
+        function updateSpectrumWithSelectedColumns() {
+            if (!availableColumns.length || !currentSpectrumData) return;
+            
+            log(`更新光谱，选择的波长列: ${selectedWavelengthColumn}, 流量列: ${selectedFluxColumn}`);
+            
+            // 向扩展发送更新光谱的请求
+            vscode.postMessage({
+                command: 'updateSpectrum',
+                wavelengthColumn: selectedWavelengthColumn,
+                fluxColumn: selectedFluxColumn
+            });
         }
     </script>
 </body>

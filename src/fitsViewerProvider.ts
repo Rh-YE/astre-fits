@@ -90,6 +90,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
     private logger: Logger;
     private webviewService: WebviewService;
     private currentFileUri: vscode.Uri | undefined;
+    private currentHDUIndex = new Map<string, number>();
 
     constructor(
         private readonly context: vscode.ExtensionContext
@@ -165,7 +166,11 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
      */
     async handleGetPixelValue(uri: vscode.Uri, x: number, y: number, webviewPanel: vscode.WebviewPanel): Promise<void> {
         try {
-            const hduData = await this.dataManager.getHDUData(uri, 0);
+            // 获取当前HDU索引
+            const uriString = uri.toString();
+            const currentHduIndex = this.currentHDUIndex.get(uriString) || 0;
+            
+            const hduData = await this.dataManager.getHDUData(uri, currentHduIndex);
             if (!hduData || hduData.type !== HDUType.IMAGE) {
                 throw new Error('无法获取图像数据');
             }
@@ -178,7 +183,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             // 计算WCS坐标（如果有）
             let wcs1 = '-';
             let wcs2 = '-';
-            const header = this.dataManager.getHDUHeader(uri, 0);
+            const header = this.dataManager.getHDUHeader(uri, currentHduIndex);
             if (header) {
                 const crpix1 = header.getItem('CRPIX1')?.value;
                 const crpix2 = header.getItem('CRPIX2')?.value;
@@ -219,7 +224,11 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
      */
     async handleSetScaleType(uri: vscode.Uri, scaleType: string, webviewPanel: vscode.WebviewPanel): Promise<void> {
         try {
-            const hduData = await this.dataManager.getHDUData(uri, 0);
+            // 获取当前HDU索引
+            const uriString = uri.toString();
+            const currentHduIndex = this.currentHDUIndex.get(uriString) || 0;
+            
+            const hduData = await this.dataManager.getHDUData(uri, currentHduIndex);
             if (!hduData || hduData.type !== HDUType.IMAGE) {
                 throw new Error('无法获取图像数据');
             }
@@ -266,7 +275,11 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
      * 处理获取头信息消息
      */
     async handleGetHeaderInfo(uri: vscode.Uri, webviewPanel: vscode.WebviewPanel): Promise<void> {
-        await this.sendHeaderInfo(uri, webviewPanel);
+        // 获取当前HDU索引
+        const uriString = uri.toString();
+        const currentHduIndex = this.currentHDUIndex.get(uriString) || 0;
+        
+        await this.sendHeaderInfo(uri, webviewPanel, currentHduIndex);
     }
 
     /**
@@ -281,6 +294,10 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
         }
 
         try {
+            // 更新当前HDU索引
+            this.currentHDUIndex.set(uriString, hduIndex);
+            this.logger.debug(`切换到HDU ${hduIndex}`);
+            
             const hduData = await this.dataManager.getHDUData(uri, hduIndex);
             if (!hduData) {
                 throw new Error(`无法获取HDU ${hduIndex} 的数据`);
@@ -290,8 +307,22 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             
             // 根据HDU类型处理数据
             if (hduData.type === HDUType.IMAGE) {
+                // 显示图像缩放按钮，隐藏光谱列选择器
+                webviewPanel.webview.postMessage({
+                    command: 'setControlsVisibility',
+                    showImageControls: true,
+                    showSpectrumControls: false
+                });
+                
                 await this.processImageHDU(uri, hduData, webviewPanel);
             } else if (hduData.type === HDUType.BINTABLE || hduData.type === HDUType.TABLE) {
+                // 隐藏图像缩放按钮，显示光谱列选择器
+                webviewPanel.webview.postMessage({
+                    command: 'setControlsVisibility',
+                    showImageControls: false,
+                    showSpectrumControls: true
+                });
+                
                 await this.processTableHDU(hduData, webviewPanel);
             } else {
                 await this.processUnknownHDU(uri, hduData, webviewPanel);
@@ -351,9 +382,18 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             
             this.webviewService.sendHDUCount(webviewPanel.webview, this.dataManager.getHDUCount(fileUri));
             
-            await this.sendHeaderInfo(fileUri, webviewPanel);
+            // 确定要显示的HDU索引
+            // 如果有扩展HDU（总数>1），则显示第一个扩展HDU（索引为1）
+            const hduCount = this.dataManager.getHDUCount(fileUri);
+            const defaultHduIndex = hduCount > 1 ? 1 : 0;
             
-            const hduData = await this.dataManager.getHDUData(fileUri, 0);
+            // 设置当前HDU索引
+            this.currentHDUIndex.set(uriString, defaultHduIndex);
+            this.logger.debug(`默认显示HDU ${defaultHduIndex}`);
+            
+            await this.sendHeaderInfo(fileUri, webviewPanel, defaultHduIndex);
+            
+            const hduData = await this.dataManager.getHDUData(fileUri, defaultHduIndex);
             if (!hduData) {
                 throw new Error('无法获取HDU数据');
             }
@@ -363,7 +403,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             this.webviewService.sendFileName(webviewPanel.webview, fileName);
             
             // 发送对象名称
-            const header = this.dataManager.getHDUHeader(fileUri, 0);
+            const header = this.dataManager.getHDUHeader(fileUri, defaultHduIndex);
             const objectName = header?.getItem('OBJECT')?.value || '未知对象';
             this.webviewService.sendObjectName(webviewPanel.webview, objectName);
             
@@ -374,8 +414,22 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             
             // 根据HDU类型处理数据
             if (hduData.type === HDUType.IMAGE) {
+                // 显示图像缩放按钮，隐藏光谱列选择器
+                webviewPanel.webview.postMessage({
+                    command: 'setControlsVisibility',
+                    showImageControls: true,
+                    showSpectrumControls: false
+                });
+                
                 await this.processImageHDU(fileUri, hduData, webviewPanel);
             } else if (hduData.type === HDUType.BINTABLE || hduData.type === HDUType.TABLE) {
+                // 隐藏图像缩放按钮，显示光谱列选择器
+                webviewPanel.webview.postMessage({
+                    command: 'setControlsVisibility',
+                    showImageControls: false,
+                    showSpectrumControls: true
+                });
+                
                 await this.processTableHDU(hduData, webviewPanel);
             } else {
                 await this.processUnknownHDU(fileUri, hduData, webviewPanel);
@@ -475,41 +529,108 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             this.logger.debug('发现列数据，开始处理光谱...');
             this.logger.debug('可用列:', Array.from(hduData.columns.keys()));
             
+            // 准备列信息数组，用于发送到webview
+            const columnsInfo = Array.from(hduData.columns.entries()).map(entry => {
+                const [name, column] = entry as [string, any];
+                return {
+                    name: name,
+                    unit: column.unit,
+                    dataType: column.dataType,
+                    length: column.data.length
+                };
+            });
+            
             // 查找波长和流量列（不区分大小写）
             let wavelengthData: number[] | undefined;
             let fluxData: number[] | undefined;
             let wavelengthUnit: string | undefined;
             let fluxUnit: string | undefined;
+            let wavelengthColumn: string | undefined;
+            let fluxColumn: string | undefined;
 
+            // 优先查找常见的波长和流量列名
             for (const [name, column] of hduData.columns) {
                 const columnNameLower = name.toLowerCase();
                 this.logger.debug(`处理列: ${name}, 数据类型: ${column.dataType}, 单位: ${column.unit || '无'}`);
                 
                 if (columnNameLower.includes('wavelength') || columnNameLower === 'wave' || columnNameLower === 'lambda') {
                     this.logger.debug(`找到波长列: ${name}`);
-                    wavelengthData = Array.from(column.data);
+                    wavelengthColumn = name;
                     wavelengthUnit = column.unit;
                 } else if (columnNameLower.includes('flux') || columnNameLower === 'data' || columnNameLower === 'intensity') {
                     this.logger.debug(`找到流量列: ${name}`);
-                    fluxData = Array.from(column.data);
+                    fluxColumn = name;
                     fluxUnit = column.unit;
                 }
             }
 
-            // 如果没有找到波长列，则创建一个序号数组
-            if (!wavelengthData && fluxData) {
-                this.logger.debug('未找到波长列，使用像素索引');
-                wavelengthData = Array.from({ length: fluxData.length }, (_, i) => i);
-                wavelengthUnit = 'pixel';
+            // 如果没有找到波长列，选择第一列作为波长
+            if (!wavelengthColumn && columnsInfo.length > 0) {
+                wavelengthColumn = columnsInfo[0].name;
+                const column = hduData.columns.get(wavelengthColumn);
+                wavelengthUnit = column?.unit;
+                this.logger.debug(`未找到明确的波长列，使用第一列 ${wavelengthColumn} 作为波长`);
             }
-            // 如果没有找到流量列，使用第一列数据
-            if (!fluxData && hduData.data) {
-                this.logger.debug('未找到流量列，使用第一列数据');
-                fluxData = Array.from(hduData.data);
-                if (!wavelengthData) {
-                    wavelengthData = Array.from({ length: fluxData.length }, (_, i) => i);
-                    wavelengthUnit = 'pixel';
+
+            // 如果没有找到流量列，选择第二列作为流量
+            if (!fluxColumn && columnsInfo.length > 1) {
+                fluxColumn = columnsInfo[1].name;
+                const column = hduData.columns.get(fluxColumn);
+                fluxUnit = column?.unit;
+                this.logger.debug(`未找到明确的流量列，使用第二列 ${fluxColumn} 作为流量`);
+            } else if (!fluxColumn && columnsInfo.length === 1) {
+                // 如果只有一列，创建一个序号数组作为波长，使用该列作为流量
+                wavelengthColumn = 'pixel';
+                wavelengthUnit = 'pixel';
+                fluxColumn = columnsInfo[0].name;
+                const column = hduData.columns.get(fluxColumn);
+                fluxUnit = column?.unit;
+                this.logger.debug(`只有一列数据，使用像素索引作为波长，使用 ${fluxColumn} 作为流量`);
+            }
+
+            // 获取选定列的数据
+            if (wavelengthColumn && wavelengthColumn !== 'pixel') {
+                const column = hduData.columns.get(wavelengthColumn);
+                if (column && column.data) {
+                    // 对于大型数据，进行采样以提高性能
+                    const dataLength = column.data.length;
+                    if (dataLength > 10000) {
+                        this.logger.debug(`波长数据过大 (${dataLength} 点)，进行采样`);
+                        const samplingRate = Math.ceil(dataLength / 10000);
+                        wavelengthData = [];
+                        for (let i = 0; i < dataLength; i += samplingRate) {
+                            wavelengthData.push(column.data[i]);
+                        }
+                        this.logger.debug(`采样后波长数据点数: ${wavelengthData.length}`);
+                    } else {
+                        wavelengthData = Array.from(column.data);
+                    }
                 }
+            }
+
+            if (fluxColumn) {
+                const column = hduData.columns.get(fluxColumn);
+                if (column && column.data) {
+                    // 对于大型数据，进行采样以提高性能
+                    const dataLength = column.data.length;
+                    if (dataLength > 10000) {
+                        this.logger.debug(`流量数据过大 (${dataLength} 点)，进行采样`);
+                        const samplingRate = Math.ceil(dataLength / 10000);
+                        fluxData = [];
+                        for (let i = 0; i < dataLength; i += samplingRate) {
+                            fluxData.push(column.data[i]);
+                        }
+                        this.logger.debug(`采样后流量数据点数: ${fluxData.length}`);
+                    } else {
+                        fluxData = Array.from(column.data);
+                    }
+                }
+            }
+
+            // 如果波长列是'pixel'，创建一个与流量数据等长的序号数组
+            if (wavelengthColumn === 'pixel' && fluxData) {
+                wavelengthData = Array.from({ length: fluxData.length }, (_, i) => i);
+                this.logger.debug(`创建了 ${wavelengthData.length} 个像素索引作为波长数据`);
             }
 
             // 发送光谱数据到webview
@@ -518,12 +639,23 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                 this.logger.debug(`波长数据长度: ${wavelengthData.length}, 单位: ${wavelengthUnit}`);
                 this.logger.debug(`流量数据长度: ${fluxData.length}, 单位: ${fluxUnit}`);
                 
+                // 确保波长和流量数据长度一致
+                const minLength = Math.min(wavelengthData.length, fluxData.length);
+                if (wavelengthData.length !== fluxData.length) {
+                    this.logger.debug(`波长和流量数据长度不一致，截断至 ${minLength}`);
+                    wavelengthData = wavelengthData.slice(0, minLength);
+                    fluxData = fluxData.slice(0, minLength);
+                }
+                
                 this.webviewService.sendSpectrumData(
                     webviewPanel.webview, 
                     wavelengthData, 
                     fluxData, 
                     wavelengthUnit, 
-                    fluxUnit
+                    fluxUnit,
+                    columnsInfo,
+                    wavelengthColumn,
+                    fluxColumn
                 );
                 
                 this.logger.debug('光谱数据已发送到webview');
@@ -589,6 +721,92 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                 command: 'setHeaderInfo',
                 html: `<p class="error">无法获取头信息: ${error instanceof Error ? error.message : String(error)}</p>`
             });
+        }
+    }
+
+    /**
+     * 处理更新光谱请求
+     */
+    public async handleUpdateSpectrum(uri: vscode.Uri, wavelengthColumn: string, fluxColumn: string, webviewPanel: vscode.WebviewPanel): Promise<void> {
+        this.logger.debug(`处理更新光谱请求: 波长列=${wavelengthColumn}, 流量列=${fluxColumn}`);
+        
+        try {
+            // 获取当前HDU索引
+            const hduIndex = this.currentHDUIndex.get(uri.toString()) || 0;
+            
+            // 获取HDU数据
+            const hduData = await this.dataManager.getHDUData(uri, hduIndex);
+            if (!hduData || !hduData.columns) {
+                this.logger.error('无法获取HDU数据或列数据');
+                return;
+            }
+            
+            // 准备列信息数组，用于发送到webview
+            const columnsInfo = Array.from(hduData.columns.entries()).map(entry => {
+                const [name, column] = entry as [string, any];
+                return {
+                    name: name,
+                    unit: column.unit,
+                    dataType: column.dataType,
+                    length: column.data.length
+                };
+            });
+            
+            // 获取波长和流量数据
+            let wavelengthData: number[] | undefined;
+            let fluxData: number[] | undefined;
+            let wavelengthUnit: string | undefined;
+            let fluxUnit: string | undefined;
+            
+            // 处理波长列
+            if (wavelengthColumn === 'pixel') {
+                // 如果选择了"pixel"，创建一个序号数组
+                const fluxCol = hduData.columns.get(fluxColumn);
+                if (fluxCol) {
+                    wavelengthData = Array.from({ length: fluxCol.data.length }, (_, i) => i);
+                    wavelengthUnit = 'pixel';
+                }
+            } else {
+                // 否则，使用选择的列
+                const wavelengthCol = hduData.columns.get(wavelengthColumn);
+                if (wavelengthCol) {
+                    wavelengthData = Array.from(wavelengthCol.data);
+                    wavelengthUnit = wavelengthCol.unit;
+                }
+            }
+            
+            // 处理流量列
+            const fluxCol = hduData.columns.get(fluxColumn);
+            if (fluxCol) {
+                fluxData = Array.from(fluxCol.data);
+                fluxUnit = fluxCol.unit;
+            }
+            
+            // 发送更新后的光谱数据到webview
+            if (wavelengthData && fluxData) {
+                this.logger.debug('准备发送更新后的光谱数据到webview');
+                this.logger.debug(`波长数据长度: ${wavelengthData.length}, 单位: ${wavelengthUnit}`);
+                this.logger.debug(`流量数据长度: ${fluxData.length}, 单位: ${fluxUnit}`);
+                
+                this.webviewService.sendSpectrumData(
+                    webviewPanel.webview, 
+                    wavelengthData, 
+                    fluxData, 
+                    wavelengthUnit, 
+                    fluxUnit,
+                    columnsInfo,
+                    wavelengthColumn,
+                    fluxColumn
+                );
+                
+                this.logger.debug('更新后的光谱数据已发送到webview');
+            } else {
+                this.logger.error('未能获取有效的波长或流量数据');
+                this.webviewService.sendLoadingMessage(webviewPanel.webview, '无法更新光谱：未找到有效的波长或流量数据');
+            }
+        } catch (error) {
+            this.logger.error(`更新光谱时出错: ${error}`);
+            this.webviewService.sendLoadingMessage(webviewPanel.webview, `更新光谱时出错: ${error}`);
         }
     }
 } 

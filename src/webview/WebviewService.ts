@@ -156,7 +156,16 @@ export class WebviewService {
     /**
      * 发送光谱数据
      */
-    public sendSpectrumData(webview: vscode.Webview, wavelength: number[], flux: number[], wavelengthUnit?: string, fluxUnit?: string): void {
+    public sendSpectrumData(
+        webview: vscode.Webview, 
+        wavelength: number[], 
+        flux: number[], 
+        wavelengthUnit?: string, 
+        fluxUnit?: string,
+        columns?: any[],
+        wavelengthColumn?: string,
+        fluxColumn?: string
+    ): void {
         this.postMessage(webview, {
             command: 'showSpectrum',
             data: {
@@ -164,7 +173,10 @@ export class WebviewService {
                 flux: flux,
                 wavelengthUnit: wavelengthUnit || 'Å',
                 fluxUnit: fluxUnit || 'Counts'
-            }
+            },
+            columns: columns,
+            wavelengthColumn: wavelengthColumn,
+            fluxColumn: fluxColumn
         });
     }
 } 
