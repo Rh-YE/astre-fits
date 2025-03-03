@@ -26,37 +26,43 @@ export class FITSDataProcessor {
             throw new Error('只能对图像类型的HDU应用缩放变换');
         }
 
-        // 如果是线性变换，直接返回原始数据
-        if (scaleType === 'linear') {
-            return {
-                data: hduData.data,
-                min: hduData.stats.min,
-                max: hduData.stats.max
-            };
-        }
-
-        // 检查图像大小，如果超过阈值，则使用分块处理
-        const isLargeImage = hduData.data.length > 4000000; // 约4百万像素的阈值
-        this.logger.debug(`图像大小: ${hduData.data.length} 像素, 使用${isLargeImage ? '分块' : '标准'}处理`);
-
         // 创建变换后的数据数组
         const transformedData = new Float32Array(hduData.data.length);
         const min = hduData.stats.min;
         const max = hduData.stats.max;
+        
+        // 检查图像大小，如果超过阈值，则使用分块处理
+        const isLargeImage = hduData.data.length > 4000000; // 约4百万像素的阈值
+        this.logger.debug(`图像大小: ${hduData.data.length} 像素, 使用${isLargeImage ? '分块' : '标准'}处理`);
+
+        // 首先进行归一化处理，将所有数据映射到0-1范围
+        await this.applyNormalization(hduData.data, transformedData, min, max, isLargeImage);
+        
+        // 如果是线性变换，直接返回归一化后的数据
+        if (scaleType === 'linear') {
+            return {
+                data: transformedData,
+                min: 0,
+                max: 1
+            };
+        }
+
+        // 创建临时数组存储归一化后的数据
+        const tempData = new Float32Array(transformedData);
 
         // 特殊处理需要全局数据的变换
         if (scaleType === 'histogram') {
             await this.applyHistogramEqualization(
-                hduData.data, transformedData, min, max, isLargeImage
+                tempData, transformedData, 0, 1, isLargeImage
             );
         } else if (scaleType === 'zscale') {
             await this.applyZScale(
-                hduData.data, transformedData, isLargeImage
+                tempData, transformedData, isLargeImage
             );
         } else {
             // 对于其他变换，使用分块处理
             await this.applyStandardTransform(
-                hduData.data, transformedData, scaleType, min, max, isLargeImage
+                tempData, transformedData, scaleType, 0, 1, isLargeImage
             );
         }
 
@@ -68,6 +74,41 @@ export class FITSDataProcessor {
             min: newMin,
             max: newMax
         };
+    }
+
+    /**
+     * 应用归一化处理，将数据映射到0-1范围
+     */
+    private static async applyNormalization(
+        sourceData: Float32Array,
+        targetData: Float32Array,
+        min: number,
+        max: number,
+        isLargeImage: boolean
+    ): Promise<void> {
+        const range = max - min;
+        
+        // 避免除以零
+        if (range === 0) {
+            // 如果范围为0，所有值设为0.5
+            targetData.fill(0.5);
+            return;
+        }
+        
+        const chunkSize = isLargeImage ? 1000000 : sourceData.length;
+        
+        for (let start = 0; start < sourceData.length; start += chunkSize) {
+            const end = Math.min(start + chunkSize, sourceData.length);
+            
+            for (let i = start; i < end; i++) {
+                targetData[i] = (sourceData[i] - min) / range;
+            }
+            
+            // 给UI线程一些时间更新
+            if (isLargeImage) {
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }
+        }
     }
 
     /**
@@ -86,9 +127,9 @@ export class FITSDataProcessor {
         const cdf = new Uint32Array(histSize);
         
         // 计算直方图 - 使用整个数据集
-        const histScale = histSize / (max - min);
+        // 注意：数据已经归一化到0-1范围
         for (let i = 0; i < sourceData.length; i++) {
-            const bin = Math.floor((sourceData[i] - min) * histScale);
+            const bin = Math.floor(sourceData[i] * (histSize - 1));
             if (bin >= 0 && bin < histSize) {
                 hist[bin]++;
             }
@@ -111,7 +152,7 @@ export class FITSDataProcessor {
             const end = Math.min(start + chunkSize, sourceData.length);
             
             for (let i = start; i < end; i++) {
-                const bin = Math.floor((sourceData[i] - min) * histScale);
+                const bin = Math.floor(sourceData[i] * (histSize - 1));
                 if (bin >= 0 && bin < histSize) {
                     targetData[i] = (cdf[bin] - cdfMin) * cdfScale;
                 }
@@ -154,10 +195,11 @@ export class FITSDataProcessor {
         }
         const stdDev = Math.sqrt(sumDiff / sampleSize);
         
-        // 应用 z-scale 变换
-        const zLow = median - 2.5 * stdDev;
-        const zHigh = median + 2.5 * stdDev;
-        const zScale = 1.0 / (zHigh - zLow || 1); // 避免除以零
+        // 应用 z-scale 变换 - 注意数据已经归一化到0-1范围
+        // 使用相对于归一化范围的缩放因子
+        const zLow = Math.max(0, median - 2.5 * stdDev);
+        const zHigh = Math.min(1, median + 2.5 * stdDev);
+        const zScale = 1.0 / (zHigh - zLow || 0.01); // 避免除以零或极小值
         
         // 分块处理
         const chunkSize = isLargeImage ? 1000000 : sourceData.length;
@@ -224,31 +266,17 @@ export class FITSDataProcessor {
                 
             case 'log':
                 // 对数变换 - 使用批量操作
-                const offset = min <= 0 ? -min + 1 : 0;
-                if (offset === 0) {
-                    // 如果没有偏移，可以直接使用Math.log
-                    for (let i = 0; i < chunkSize; i++) {
-                        resultChunk[i] = Math.log(chunk[i]);
-                    }
-                } else {
-                    // 有偏移时，需要先加上偏移
-                    for (let i = 0; i < chunkSize; i++) {
-                        resultChunk[i] = Math.log(chunk[i] + offset);
-                    }
+                // 注意：数据已经归一化到0-1范围，所以需要避免log(0)
+                for (let i = 0; i < chunkSize; i++) {
+                    // 添加一个小的偏移量避免log(0)
+                    resultChunk[i] = Math.log(Math.max(chunk[i], 1e-10) + 1) / Math.log(2);
                 }
                 break;
                 
             case 'sqrt':
                 // 平方根变换
-                const sqrtOffset = min < 0 ? -min : 0;
-                if (sqrtOffset === 0) {
-                    for (let i = 0; i < chunkSize; i++) {
-                        resultChunk[i] = Math.sqrt(chunk[i]);
-                    }
-                } else {
-                    for (let i = 0; i < chunkSize; i++) {
-                        resultChunk[i] = Math.sqrt(chunk[i] + sqrtOffset);
-                    }
+                for (let i = 0; i < chunkSize; i++) {
+                    resultChunk[i] = Math.sqrt(chunk[i]);
                 }
                 break;
                 
@@ -262,24 +290,21 @@ export class FITSDataProcessor {
             case 'asinh':
                 // 反双曲正弦变换
                 for (let i = 0; i < chunkSize; i++) {
-                    resultChunk[i] = Math.asinh(chunk[i]);
+                    resultChunk[i] = Math.asinh(chunk[i] * 10) / 3; // 缩放以增强效果
                 }
                 break;
                 
             case 'sinh':
                 // 双曲正弦变换
                 for (let i = 0; i < chunkSize; i++) {
-                    resultChunk[i] = Math.sinh(chunk[i]);
+                    resultChunk[i] = Math.sinh(chunk[i] * 3) / 10; // 缩放以增强效果
                 }
                 break;
                 
             case 'power':
                 // 幂律变换 (gamma = 2.0)
-                const powerOffset = min < 0 ? -min : 0;
-                const powerScale = 1.0 / (max + powerOffset);
                 for (let i = 0; i < chunkSize; i++) {
-                    const normalizedValue = (chunk[i] + powerOffset) * powerScale;
-                    resultChunk[i] = Math.pow(normalizedValue, 2.0);
+                    resultChunk[i] = Math.pow(chunk[i], 2.0);
                 }
                 break;
                 

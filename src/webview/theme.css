@@ -1,0 +1,413 @@
+:root {
+    --vscode-foreground: var(--vscode-editor-foreground, #cccccc);
+    --vscode-background: var(--vscode-editor-background, #1e1e1e);
+    --vscode-sidebar-background: var(--vscode-sideBar-background, #252526);
+    --vscode-border: var(--vscode-panel-border, #80808059);
+    --vscode-button-background: var(--vscode-button-background, #0e639c);
+    --vscode-button-foreground: var(--vscode-button-foreground, #ffffff);
+    --vscode-button-hoverBackground: var(--vscode-button-hoverBackground, #1177bb);
+    --vscode-input-background: var(--vscode-input-background, #3c3c3c);
+    --vscode-input-foreground: var(--vscode-input-foreground, #cccccc);
+    --vscode-input-border: var(--vscode-input-border, #3c3c3c);
+    --vscode-dropdown-background: var(--vscode-dropdown-background, #3c3c3c);
+    --vscode-dropdown-foreground: var(--vscode-dropdown-foreground, #f0f0f0);
+    --vscode-dropdown-border: var(--vscode-dropdown-border, #3c3c3c);
+    --vscode-panel-background: var(--vscode-panel-background, #1e1e1e);
+    --vscode-panel-border: var(--vscode-panel-border, #80808059);
+    --vscode-tab-activeBackground: var(--vscode-tab-activeBackground, #1e1e1e);
+    --vscode-tab-inactiveBackground: var(--vscode-tab-inactiveBackground, #2d2d2d);
+    --vscode-editor-selectionBackground: var(--vscode-editor-selectionBackground, #264f78);
+    --vscode-list-hoverBackground: var(--vscode-list-hoverBackground, #2a2d2e);
+    --vscode-list-activeSelectionBackground: var(--vscode-list-activeSelectionBackground, #094771);
+    --vscode-list-activeSelectionForeground: var(--vscode-list-activeSelectionForeground, #ffffff);
+}
+
+/* 基础样式 */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', 'HelveticaNeue-Light', 'Ubuntu', 'Droid Sans', sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: var(--vscode-background);
+    color: var(--vscode-foreground);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* 顶部区域容器 */
+.top-container {
+    display: flex;
+    flex-direction: column;
+    background-color: var(--vscode-sidebar-background);
+    border-bottom: 1px solid var(--vscode-border);
+    max-height: 40vh;
+    min-height: 120px;
+    overflow: hidden;
+}
+
+/* 顶部菜单栏样式 */
+.menu-bar {
+    display: flex;
+    background-color: var(--vscode-sidebar-background);
+    border-bottom: 1px solid var(--vscode-border);
+    padding: 5px 10px;
+    overflow-x: auto;
+    flex-shrink: 0;
+    height: 30px;
+    align-items: center;
+}
+
+.menu-item {
+    padding: 5px 10px;
+    margin-right: 5px;
+    cursor: pointer;
+    border-radius: 2px;
+    color: var(--vscode-foreground);
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.menu-item:hover {
+    background-color: var(--vscode-list-hoverBackground);
+}
+
+/* 信息显示区样式 */
+.info-panel {
+    display: flex;
+    padding: 5px;
+    border-bottom: 1px solid var(--vscode-border);
+    background-color: var(--vscode-sidebar-background);
+    font-size: 13px;
+    overflow: hidden;
+    flex-wrap: wrap;
+    flex: 0 1 auto;
+    min-height: 40px;
+    max-height: 25vh;
+}
+
+.info-left {
+    flex: 3 1 300px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-gap: 5px 10px;
+    align-items: center;
+    min-width: 0;
+    padding: 5px;
+}
+
+.preview-container {
+    flex: 1 1 150px;
+    padding: 5px;
+    border-left: 1px solid var(--vscode-border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    min-width: 0;
+    max-height: 100%;
+    overflow: hidden;
+}
+
+.header-info-container {
+    flex: 1 1 200px;
+    padding: 5px;
+    border-left: 1px solid var(--vscode-border);
+    background-color: var(--vscode-sidebar-background);
+    color: var(--vscode-foreground);
+    font-size: 12px;
+    border-radius: 0;
+    min-width: 0;
+    max-height: 100%;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.info-label {
+    font-weight: bold;
+    text-align: right;
+    color: var(--vscode-foreground);
+    white-space: nowrap;
+}
+
+.info-value {
+    text-align: left;
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    padding: 2px 5px;
+    border: 1px solid var(--vscode-input-border);
+    min-height: 1.2em;
+    border-radius: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 坐标显示容器 */
+#wcs-coords-container, #image-coords-container {
+    display: flex;
+    align-items: center;
+    margin-top: 5px;
+}
+
+#wcs-coords-container .info-label, #image-coords-container .info-label {
+    margin-right: 5px;
+    min-width: 40px;
+    text-align: left;
+}
+
+#wcs-coords-container .info-value, #image-coords-container .info-value {
+    margin-right: 15px;
+    min-width: 60px;
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    padding: 2px 5px;
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 控制区样式 */
+.controls-container {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+}
+
+/* 缩放控制区样式 */
+.scale-controls {
+    display: flex;
+    padding: 3px 10px;
+    background-color: var(--vscode-sidebar-background);
+    border-bottom: 1px solid var(--vscode-border);
+    align-items: center;
+    overflow-x: auto;
+    height: 30px;
+    flex-shrink: 0;
+}
+
+.scale-buttons-group {
+    display: flex;
+    align-items: center;
+    overflow-x: auto;
+}
+
+.spectrum-controls {
+    display: flex;
+    align-items: center;
+    overflow-x: auto;
+}
+
+.scale-button {
+    padding: 3px 8px;
+    margin-right: 5px;
+    cursor: pointer;
+    border: 1px solid var(--vscode-border);
+    border-radius: 2px;
+    background-color: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.scale-button:hover {
+    background-color: var(--vscode-list-hoverBackground);
+}
+
+.scale-button.active {
+    background-color: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+    border-color: var(--vscode-list-activeSelectionBackground);
+}
+
+/* 图像显示区样式 */
+.image-container {
+    flex: 1 1 auto;
+    overflow: hidden;
+    background-color: var(--vscode-panel-background);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    min-height: 100px;
+}
+
+.image-display {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    display: none;
+}
+
+.image-placeholder {
+    color: var(--vscode-foreground);
+    text-align: center;
+    padding: 20px;
+    background-color: rgba(0, 0, 0, 0.3);
+    border-radius: 3px;
+    max-width: 80%;
+}
+
+
+
+.preview-viewport {
+    position: absolute;
+    border: 2px solid #ff5500;
+    pointer-events: none;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+
+/* 标题样式 */
+h3 {
+    margin: 0 0 5px 0;
+    font-size: 13px;
+    color: var(--vscode-foreground);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* 头文件信息滚动区域 */
+.header-scroll {
+    flex: 1;
+    overflow-y: auto;
+    max-height: 100%;
+}
+
+/* 像素值显示样式 */
+.pixel-info {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    background-color: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    padding: 5px 10px;
+    border-radius: 2px;
+    font-size: 12px;
+    display: none;
+    border: 1px solid var(--vscode-border);
+    z-index: 100;
+}
+
+/* 调试信息样式 */
+.debug-info {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background-color: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    padding: 5px 10px;
+    border-radius: 2px;
+    font-size: 12px;
+    max-width: 300px;
+    max-height: 200px;
+    overflow: auto;
+    z-index: 100;
+    border: 1px solid var(--vscode-border);
+}
+
+/* 缩放和平移提示 */
+.zoom-pan-hint {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    background-color: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    padding: 5px 10px;
+    border-radius: 2px;
+    font-size: 12px;
+    opacity: 0.8;
+    z-index: 100;
+    border: 1px solid var(--vscode-border);
+}
+
+/* 缩放指示器 */
+.zoom-indicator {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background-color: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    padding: 5px 10px;
+    border-radius: 2px;
+    font-size: 12px;
+    z-index: 100;
+    border: 1px solid var(--vscode-border);
+}
+
+/* 光谱显示样式 */
+.spectrum-display {
+    width: 100%;
+    height: 100%;
+    background-color: var(--vscode-panel-background);
+    border: 1px solid var(--vscode-border);
+}
+
+/* 折叠按钮 */
+.collapse-button {
+    position: absolute;
+    right: 10px;
+    top: 5px;
+    background-color: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    border: 1px solid var(--vscode-border);
+    border-radius: 2px;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    z-index: 101;
+    font-size: 14px;
+    line-height: 1;
+}
+
+.collapse-button:hover {
+    background-color: var(--vscode-list-hoverBackground);
+}
+
+/* 响应式布局调整 */
+@media (max-width: 768px) {
+    .info-panel {
+        flex-direction: column;
+    }
+    
+    .info-left, .preview-container, .header-info-container {
+        flex: 0 0 auto;
+        width: 100%;
+        border-left: none;
+        border-top: 1px solid var(--vscode-border);
+        padding: 5px;
+    }
+    
+    .info-left {
+        border-top: none;
+    }
+}
+
+/* 折叠状态的顶部容器 */
+.top-container.collapsed {
+    max-height: 30px;
+    min-height: 30px;
+    overflow: hidden;
+}
+
+.top-container.collapsed .info-panel,
+.top-container.collapsed .controls-container {
+    display: none;
+}
+
+/* 状态栏样式 */
+.status-bar {
+    display: flex;
+    background-color: var(--vscode-statusBar-background);
+    color: var(--vscode-statusBar-foreground);
+    padding: 3px 10px;
+    font-size: 12px;
+    border-top: 1px solid var(--vscode-statusBar-border);
+    height: 22px;
+    align-items: center;
+} 

@@ -30,15 +30,18 @@ class FITSTableParser {
     // 数据类型字节映射表
     private static readonly TYPE_BYTE_SIZES = new Map<string, number>([
         ['L', 1],  // Logical
+        ['X', 1],  // Bit
         ['B', 1],  // Unsigned byte
         ['I', 2],  // 16-bit integer
         ['J', 4],  // 32-bit integer
         ['K', 8],  // 64-bit integer
-        ['E', 4],  // 32-bit floating point
-        ['D', 8],  // 64-bit floating point
-        ['C', 8],  // Complex (2*4 bytes)
-        ['M', 16], // Double complex (2*8 bytes)
         ['A', 1],  // Character
+        ['E', 4],  // Single-precision floating point
+        ['D', 8],  // Double-precision floating point
+        ['C', 8],  // Single-precision complex
+        ['M', 16], // Double-precision complex
+        ['P', 8],  // Array Descriptor (32-bit)
+        ['Q', 16], // Array Descriptor (64-bit)
     ]);
 
     // 解析TFORM值
@@ -390,6 +393,12 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             // 设置当前HDU索引
             this.currentHDUIndex.set(uriString, defaultHduIndex);
             this.logger.debug(`默认显示HDU ${defaultHduIndex}`);
+            
+            // 发送消息更新HDU选择器的选中状态
+            this.webviewService.postMessage(webviewPanel.webview, {
+                command: 'setSelectedHDU',
+                hduIndex: defaultHduIndex
+            });
             
             await this.sendHeaderInfo(fileUri, webviewPanel, defaultHduIndex);
             

@@ -7,7 +7,6 @@ import { Logger, LogLevel } from './models/Logger';
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-	// 初始化日志记录器
 	const logger = Logger.getInstance();
 	logger.setLogLevel(LogLevel.INFO);
 	

@@ -26,6 +26,19 @@ export class WebviewService {
         let htmlContent = fs.readFileSync(htmlPath.fsPath, 'utf8');
         this.logger.debug('已读取HTML内容');
         
+        // 获取资源URI
+        const resourceUris = (webview as any).resourceUris;
+        if (!resourceUris) {
+            throw new Error('Webview资源URI未初始化');
+        }
+        
+        // 替换资源路径
+        htmlContent = htmlContent
+            .replace('href="theme.css"', `href="${resourceUris.themeCss}"`)
+            .replace('./common.js', resourceUris.commonJs.toString())
+            .replace('./image-viewer.js', resourceUris.imageViewerJs.toString())
+            .replace('./spectrum-viewer.js', resourceUris.spectrumViewerJs.toString());
+        
         return htmlContent;
     }
     
@@ -33,12 +46,33 @@ export class WebviewService {
      * 配置webview选项
      */
     public configureWebview(webview: vscode.Webview): void {
+        // 获取webview内容的根路径
+        const webviewRoot = vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview');
+        
+        // 获取本地资源根路径
+        const localResourceRoots = [
+            webviewRoot,
+            vscode.Uri.file(path.join(this.context.globalStorageUri.fsPath, 'fits-temp'))
+        ];
+        
+        // 配置webview选项
         webview.options = {
             enableScripts: true,
-            localResourceRoots: [
-                vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview'),
-                vscode.Uri.file(path.join(this.context.globalStorageUri.fsPath, 'fits-temp'))
-            ]
+            localResourceRoots: localResourceRoots
+        };
+        
+        // 获取JavaScript和CSS文件的URI
+        const commonJs = webview.asWebviewUri(vscode.Uri.joinPath(webviewRoot, 'common.js'));
+        const imageViewerJs = webview.asWebviewUri(vscode.Uri.joinPath(webviewRoot, 'image-viewer.js'));
+        const spectrumViewerJs = webview.asWebviewUri(vscode.Uri.joinPath(webviewRoot, 'spectrum-viewer.js'));
+        const themeCss = webview.asWebviewUri(vscode.Uri.joinPath(webviewRoot, 'theme.css'));
+        
+        // 保存资源URI到webview的options中，以便在getHtmlForWebview中使用
+        (webview as any).resourceUris = {
+            commonJs,
+            imageViewerJs,
+            spectrumViewerJs,
+            themeCss
         };
     }
     

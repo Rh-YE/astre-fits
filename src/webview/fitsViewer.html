@@ -4,413 +4,229 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FITS 文件查看器</title>
-    <style>
-        :root {
-            --vscode-foreground: var(--vscode-editor-foreground, #cccccc);
-            --vscode-background: var(--vscode-editor-background, #1e1e1e);
-            --vscode-sidebar-background: var(--vscode-sideBar-background, #252526);
-            --vscode-border: var(--vscode-panel-border, #80808059);
-            --vscode-button-background: var(--vscode-button-background, #0e639c);
-            --vscode-button-foreground: var(--vscode-button-foreground, #ffffff);
-            --vscode-button-hoverBackground: var(--vscode-button-hoverBackground, #1177bb);
-            --vscode-input-background: var(--vscode-input-background, #3c3c3c);
-            --vscode-input-foreground: var(--vscode-input-foreground, #cccccc);
-            --vscode-input-border: var(--vscode-input-border, #3c3c3c);
-            --vscode-dropdown-background: var(--vscode-dropdown-background, #3c3c3c);
-            --vscode-dropdown-foreground: var(--vscode-dropdown-foreground, #f0f0f0);
-            --vscode-dropdown-border: var(--vscode-dropdown-border, #3c3c3c);
-            --vscode-panel-background: var(--vscode-panel-background, #1e1e1e);
-            --vscode-panel-border: var(--vscode-panel-border, #80808059);
-            --vscode-tab-activeBackground: var(--vscode-tab-activeBackground, #1e1e1e);
-            --vscode-tab-inactiveBackground: var(--vscode-tab-inactiveBackground, #2d2d2d);
-            --vscode-editor-selectionBackground: var(--vscode-editor-selectionBackground, #264f78);
-            --vscode-list-hoverBackground: var(--vscode-list-hoverBackground, #2a2d2e);
-            --vscode-list-activeSelectionBackground: var(--vscode-list-activeSelectionBackground, #094771);
-            --vscode-list-activeSelectionForeground: var(--vscode-list-activeSelectionForeground, #ffffff);
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', 'HelveticaNeue-Light', 'Ubuntu', 'Droid Sans', sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: var(--vscode-background);
-            color: var(--vscode-foreground);
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            overflow: hidden;
-        }
-        
-        /* 顶部区域容器 */
-        .top-container {
-            display: flex;
-            flex-direction: column;
-            background-color: var(--vscode-sidebar-background);
-            border-bottom: 1px solid var(--vscode-border);
-            max-height: 40vh; /* 限制顶部区域最大高度 */
-            min-height: 120px; /* 确保最小高度 */
-            overflow: hidden;
-        }
-        
-        /* 顶部菜单栏样式 - 使用固定高度 */
-        .menu-bar {
-            display: flex;
-            background-color: var(--vscode-sidebar-background);
-            border-bottom: 1px solid var(--vscode-border);
-            padding: 5px 10px;
-            overflow-x: auto;
-            flex-shrink: 0; /* 防止菜单栏被压缩 */
-            height: 30px; /* 固定高度 */
-            align-items: center;
-        }
-        
-        .menu-item {
-            padding: 5px 10px;
-            margin-right: 5px;
-            cursor: pointer;
-            border-radius: 2px;
-            color: var(--vscode-foreground);
-            font-size: 13px;
-            white-space: nowrap;
-        }
-        
-        .menu-item:hover {
-            background-color: var(--vscode-list-hoverBackground);
-        }
-        
-        /* 信息显示区样式 - 使用弹性布局 */
-        .info-panel {
-            display: flex;
-            padding: 5px;
-            border-bottom: 1px solid var(--vscode-border);
-            background-color: var(--vscode-sidebar-background);
-            font-size: 13px;
-            overflow: hidden;
-            flex-wrap: wrap; /* 允许在小屏幕上换行 */
-            flex: 0 1 auto; /* 允许收缩但不扩展 */
-            min-height: 40px;
-            max-height: 25vh; /* 限制最大高度 */
-        }
-        
-        .info-left {
-            flex: 3 1 300px; /* 基础大小300px，可以增长和收缩 */
-            display: grid;
-            grid-template-columns: auto 1fr;
-            grid-gap: 5px 10px;
-            align-items: center;
-            min-width: 0; /* 允许在flex容器中收缩 */
-            padding: 5px;
-        }
-        
-        .preview-container {
-            flex: 1 1 150px; /* 基础大小150px，可以增长和收缩 */
-            padding: 5px;
-            border-left: 1px solid var(--vscode-border);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            position: relative;
-            min-width: 0; /* 允许在flex容器中收缩 */
-            max-height: 100%;
-            overflow: hidden;
-        }
-        
-        .header-info-container {
-            flex: 1 1 200px; /* 基础大小200px，可以增长和收缩 */
-            padding: 5px;
-            border-left: 1px solid var(--vscode-border);
-            background-color: var(--vscode-sidebar-background);
-            color: var(--vscode-foreground);
-            font-size: 12px;
-            border-radius: 0;
-            min-width: 0; /* 允许在flex容器中收缩 */
-            max-height: 100%;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .info-label {
-            font-weight: bold;
-            text-align: right;
-            color: var(--vscode-foreground);
-            white-space: nowrap;
-        }
-        
-        .info-value {
-            text-align: left;
-            background-color: var(--vscode-input-background);
-            color: var(--vscode-input-foreground);
-            padding: 2px 5px;
-            border: 1px solid var(--vscode-input-border);
-            min-height: 1.2em;
-            border-radius: 2px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        
-        #wcs-coords-container, #image-coords-container {
-            display: flex;
-            align-items: center;
-            margin-top: 5px;
-        }
-        
-        #wcs-coords-container .info-label, #image-coords-container .info-label {
-            margin-right: 5px;
-            min-width: 40px;
-            text-align: left;
-        }
-        
-        #wcs-coords-container .info-value, #image-coords-container .info-value {
-            margin-right: 15px;
-            min-width: 60px;
-            background-color: var(--vscode-input-background);
-            color: var(--vscode-input-foreground);
-            padding: 2px 5px;
-            border: 1px solid var(--vscode-input-border);
-            border-radius: 2px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        
-        /* 控制区样式 - 使用固定高度 */
-        .controls-container {
-            display: flex;
-            flex-direction: column;
-            flex-shrink: 0; /* 防止被压缩 */
-        }
-        
-        /* 缩放控制区样式 */
-        .scale-controls {
-            display: flex;
-            padding: 3px 10px;
-            background-color: var(--vscode-sidebar-background);
-            border-bottom: 1px solid var(--vscode-border);
-            align-items: center;
-            overflow-x: auto;
-            height: 30px; /* 固定高度 */
-            flex-shrink: 0; /* 防止被压缩 */
-        }
-        
-        .scale-buttons-group {
-            display: flex;
-            align-items: center;
-            overflow-x: auto;
-        }
-        
-        .spectrum-controls {
-            display: flex;
-            align-items: center;
-            overflow-x: auto;
-        }
-        
-        .scale-button {
-            padding: 3px 8px;
-            margin-right: 5px;
-            cursor: pointer;
-            border: 1px solid var(--vscode-border);
-            border-radius: 2px;
-            background-color: var(--vscode-dropdown-background);
-            color: var(--vscode-dropdown-foreground);
-            font-size: 12px;
-            white-space: nowrap;
-        }
-        
-        .scale-button:hover {
-            background-color: var(--vscode-list-hoverBackground);
-        }
-        
-        .scale-button.active {
-            background-color: var(--vscode-list-activeSelectionBackground);
-            color: var(--vscode-list-activeSelectionForeground);
-            border-color: var(--vscode-list-activeSelectionBackground);
-        }
-        
-        /* 图像显示区样式 - 使用剩余空间 */
-        .image-container {
-            flex: 1 1 auto; /* 使用所有剩余空间 */
-            overflow: hidden; /* 改为hidden，防止滚动条 */
-            background-color: var(--vscode-panel-background);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            position: relative;
-            min-height: 100px; /* 确保最小高度 */
-        }
-        
-        .image-display {
-            max-width: 100%;
-            max-height: 100%;
-            object-fit: contain;
-            display: none;
-        }
-        
-        .image-placeholder {
-            color: var(--vscode-foreground);
-            text-align: center;
-            padding: 20px;
-            background-color: rgba(0, 0, 0, 0.3);
-            border-radius: 3px;
-            max-width: 80%;
-        }
-        
-        /* 预览图样式 */
-        .preview-canvas {
-            width: 100%;
-            height: 100%;
-            background-color: var(--vscode-panel-background);
-            border: 1px solid var(--vscode-border);
-        }
-        
-        .preview-viewport {
-            position: absolute;
-            border: 2px solid #ff5500;
-            pointer-events: none;
-            box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);
-        }
-        
-        /* 标题样式 */
-        h3 {
-            margin: 0 0 5px 0;
-            font-size: 13px;
-            color: var(--vscode-foreground);
-            white-space: nowrap;
-            flex-shrink: 0;
-        }
-        
-        /* 头文件信息滚动区域 */
-        .header-scroll {
-            flex: 1;
-            overflow-y: auto;
-            max-height: 100%;
-        }
-        
-        /* 像素值显示样式 */
-        .pixel-info {
-            position: absolute;
-            bottom: 10px;
-            left: 10px;
-            background-color: var(--vscode-dropdown-background);
-            color: var(--vscode-dropdown-foreground);
-            padding: 5px 10px;
-            border-radius: 2px;
-            font-size: 12px;
-            display: none;
-            border: 1px solid var(--vscode-border);
-            z-index: 100;
-        }
-        
-        /* 调试信息样式 */
-        .debug-info {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background-color: var(--vscode-dropdown-background);
-            color: var(--vscode-dropdown-foreground);
-            padding: 5px 10px;
-            border-radius: 2px;
-            font-size: 12px;
-            max-width: 300px;
-            max-height: 200px;
-            overflow: auto;
-            z-index: 100;
-            border: 1px solid var(--vscode-border);
-        }
-        
-        /* 缩放和平移提示 */
-        .zoom-pan-hint {
-            position: absolute;
-            bottom: 10px;
-            right: 10px;
-            background-color: var(--vscode-dropdown-background);
-            color: var(--vscode-dropdown-foreground);
-            padding: 5px 10px;
-            border-radius: 2px;
-            font-size: 12px;
-            opacity: 0.8;
-            z-index: 100;
-            border: 1px solid var(--vscode-border);
-        }
-        
-        /* 缩放指示器 */
-        .zoom-indicator {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            background-color: var(--vscode-dropdown-background);
-            color: var(--vscode-dropdown-foreground);
-            padding: 5px 10px;
-            border-radius: 2px;
-            font-size: 12px;
-            z-index: 100;
-            border: 1px solid var(--vscode-border);
-        }
-        
-        /* 添加光谱显示的样式 */
-        .spectrum-display {
-            width: 100%;
-            height: 100%;
-            background-color: var(--vscode-panel-background);
-            border: 1px solid var(--vscode-border);
-        }
-        
-        /* 折叠按钮 */
-        .collapse-button {
-            position: absolute;
-            right: 10px;
-            top: 5px;
-            background-color: var(--vscode-dropdown-background);
-            color: var(--vscode-dropdown-foreground);
-            border: 1px solid var(--vscode-border);
-            border-radius: 2px;
-            width: 20px;
-            height: 20px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            cursor: pointer;
-            z-index: 101;
-            font-size: 14px;
-            line-height: 1;
-        }
-        
-        .collapse-button:hover {
-            background-color: var(--vscode-list-hoverBackground);
-        }
-        
-        /* 响应式布局调整 */
-        @media (max-width: 768px) {
-            .info-panel {
-                flex-direction: column;
+    <link rel="stylesheet" href="theme.css">
+    <script type="module">
+        // 等待DOM加载完成
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const { vscode, log } = await import('./common.js');
+                const { default: ImageViewer } = await import('./image-viewer.js');
+                const { default: SpectrumViewer } = await import('./spectrum-viewer.js');
+                
+                // 初始化图像查看器和光谱查看器
+                const imageViewer = new ImageViewer();
+                const spectrumViewer = new SpectrumViewer();
+                
+                // 添加容器大小变化监听
+                const container = document.querySelector('.image-container');
+                const resizeObserver = new ResizeObserver(entries => {
+                    for (const entry of entries) {
+                        // 重新渲染图像
+                        if (imageViewer.currentImageData) {
+                            imageViewer.renderWithTransform();
+                        }
+                        
+                        // 重新渲染光谱
+                        const spectrumData = document.getElementById('spectrum-canvas').dataset.spectrumData;
+                        if (spectrumData) {
+                            spectrumViewer.renderSpectrum(JSON.parse(spectrumData), true);
+                        }
+                    }
+                });
+                
+                // 开始监听容器大小变化
+                resizeObserver.observe(container);
+                
+                // 初始化缩放按钮
+                document.querySelectorAll('.scale-button').forEach(button => {
+                    button.addEventListener('click', () => {
+                        // 移除所有活动按钮
+                        document.querySelectorAll('.scale-button').forEach(b => b.classList.remove('active'));
+                        
+                        // 激活当前按钮
+                        button.classList.add('active');
+                        
+                        // 发送缩放类型到扩展
+                        const scaleType = button.getAttribute('data-scale');
+                        vscode.postMessage({
+                            command: 'setScaleType',
+                            scaleType: scaleType
+                        });
+                    });
+                });
+                
+                // 处理顶部区域折叠/展开功能
+                const topContainer = document.getElementById('top-container');
+                const collapseButton = document.getElementById('collapse-button');
+                
+                collapseButton.addEventListener('click', () => {
+                    topContainer.classList.toggle('collapsed');
+                    
+                    // 更新按钮图标
+                    if (topContainer.classList.contains('collapsed')) {
+                        collapseButton.textContent = '▼';
+                        collapseButton.title = '展开面板';
+                    } else {
+                        collapseButton.textContent = '▲';
+                        collapseButton.title = '折叠面板';
+                    }
+                    
+                    // 触发窗口大小变化事件，以便重新渲染
+                    const event = new Event('resize');
+                    window.dispatchEvent(event);
+                });
+                
+                // HDU选择器相关函数
+                function updateHDUSelector(count) {
+                    const selector = document.getElementById('hdu-selector');
+                    
+                    // 移除现有的事件监听器（如果有）
+                    const oldSelector = selector.cloneNode(false);
+                    selector.parentNode.replaceChild(oldSelector, selector);
+                    
+                    // 使用新的选择器引用
+                    const newSelector = oldSelector;
+                    newSelector.innerHTML = '';
+                    
+                    for (let i = 0; i < count; i++) {
+                        const option = document.createElement('option');
+                        option.value = i;
+                        option.textContent = i === 0 ? 'Primary HDU' : `Extension HDU ${i}`;
+                        newSelector.appendChild(option);
+                    }
+                    
+                    // 添加选择事件
+                    newSelector.addEventListener('change', () => {
+                        const hduIndex = parseInt(newSelector.value);
+                        vscode.postMessage({
+                            command: 'switchHDU',
+                            hduIndex: hduIndex
+                        });
+                    });
+                }
+                
+                // 监听来自扩展的消息
+                window.addEventListener('message', event => {
+                    const message = event.data;
+                    
+                    switch (message.command) {
+                        case 'setFileName':
+                            document.getElementById('file-value').textContent = message.fileName;
+                            break;
+                            
+                        case 'setObjectName':
+                            document.getElementById('object-value').textContent = message.objectName || '未知';
+                            break;
+                            
+                        case 'setHeaderInfo':
+                            // 显示头文件信息
+                            if (message.text) {
+                                document.getElementById('header-info').textContent = message.text;
+                            } else if (message.html) {
+                                document.getElementById('header-info').innerHTML = message.html;
+                            }
+                            break;
+                            
+                        case 'setStatsInfo':
+                            document.getElementById('stats-info').innerHTML = message.html || '无统计信息';
+                            break;
+                            
+                        case 'setPixelValue':
+                            document.getElementById('pixel-value').textContent = message.value || '-';
+                            document.getElementById('wcs-value-1').textContent = message.wcs1 || '-';
+                            document.getElementById('wcs-value-2').textContent = message.wcs2 || '-';
+                            break;
+                            
+                        case 'setWCSValue':
+                            document.getElementById('wcs-value-1').textContent = message.wcs1 || '-';
+                            document.getElementById('wcs-value-2').textContent = message.wcs2 || '-';
+                            break;
+                            
+                        case 'setImageDataFromFile':
+                            log(`收到图像数据文件URI: ${message.fileUri}`);
+                            // 保存当前的缩放和平移状态
+                            const prevZoomLevel = imageViewer.currentImageData ? imageViewer.zoomLevel : null;
+                            const prevPanOffsetX = imageViewer.currentImageData ? imageViewer.panOffsetX : null;
+                            const prevPanOffsetY = imageViewer.currentImageData ? imageViewer.panOffsetY : null;
+                            const prevWidth = imageViewer.currentImageData ? imageViewer.currentImageData.width : null;
+                            const prevHeight = imageViewer.currentImageData ? imageViewer.currentImageData.height : null;
+                            
+                            imageViewer.loadImageDataFromFile(message.fileUri, prevZoomLevel, prevPanOffsetX, prevPanOffsetY, prevWidth, prevHeight);
+                            break;
+                            
+                        case 'setImageData':
+                            if (message.rawData) {
+                                // 保存当前的缩放和平移状态
+                                const prevZoomLevel = imageViewer.currentImageData ? imageViewer.zoomLevel : null;
+                                const prevPanOffsetX = imageViewer.currentImageData ? imageViewer.panOffsetX : null;
+                                const prevPanOffsetY = imageViewer.currentImageData ? imageViewer.panOffsetY : null;
+                                const prevWidth = imageViewer.currentImageData ? imageViewer.currentImageData.width : null;
+                                const prevHeight = imageViewer.currentImageData ? imageViewer.currentImageData.height : null;
+                                
+                                imageViewer.loadImageData(message.rawData, prevZoomLevel, prevPanOffsetX, prevPanOffsetY, prevWidth, prevHeight);
+                            } else {
+                                // 显示错误信息
+                                document.getElementById('fits-canvas').style.display = 'none';
+                                const imagePlaceholder = document.getElementById('image-placeholder');
+                                imagePlaceholder.style.display = 'block';
+                                imagePlaceholder.textContent = message.message || '无法显示图像数据';
+                            }
+                            break;
+                            
+                        case 'setHDUCount':
+                            updateHDUSelector(message.count);
+                            break;
+                            
+                        case 'setSelectedHDU':
+                            document.getElementById('hdu-selector').value = message.hduIndex;
+                            break;
+                            
+                        case 'showSpectrum':
+                            log('收到显示光谱的命令');
+                            // 隐藏图像Canvas，显示光谱Canvas
+                            document.getElementById('fits-canvas').style.display = 'none';
+                            document.getElementById('spectrum-canvas').style.display = 'block';
+                            document.getElementById('image-placeholder').style.display = 'none';
+                            
+                            // 清空WCS信息
+                            document.getElementById('wcs-value-1').textContent = '-';
+                            document.getElementById('wcs-value-2').textContent = '-';
+                            
+                            // 隐藏图像缩放按钮，显示光谱列选择器
+                            document.getElementById('image-scale-buttons').style.display = 'none';
+                            document.getElementById('spectrum-column-selectors').style.display = 'flex';
+                            
+                            // 如果有可用列信息，填充列选择器
+                            if (message.columns && message.columns.length > 0) {
+                                spectrumViewer.availableColumns = message.columns;
+                                spectrumViewer.updateColumnSelectors(message.columns, message.wavelengthColumn, message.fluxColumn);
+                            }
+                            
+                            // 渲染光谱数据
+                            spectrumViewer.renderSpectrum(message.data);
+                            break;
+                            
+                        case 'setControlsVisibility':
+                            // 设置图像缩放按钮的可见性
+                            document.getElementById('image-scale-buttons').style.display = 
+                                message.showImageControls ? 'flex' : 'none';
+                            
+                            // 设置光谱列选择器的可见性
+                            document.getElementById('spectrum-column-selectors').style.display = 
+                                message.showSpectrumControls ? 'flex' : 'none';
+                            break;
+                    }
+                });
+                
+                // 通知扩展webview已准备好
+                vscode.postMessage({
+                    command: 'webviewReady'
+                });
+            } catch (error) {
+                console.error('初始化失败:', error);
             }
-            
-            .info-left, .preview-container, .header-info-container {
-                flex: 0 0 auto;
-                width: 100%;
-                border-left: none;
-                border-top: 1px solid var(--vscode-border);
-                padding: 5px;
-            }
-            
-            .info-left {
-                border-top: none;
-            }
-        }
-        
-        /* 折叠状态的顶部容器 */
-        .top-container.collapsed {
-            max-height: 30px;
-            min-height: 30px;
-            overflow: hidden;
-        }
-        
-        .top-container.collapsed .info-panel,
-        .top-container.collapsed .controls-container {
-            display: none;
-        }
-    </style>
+        });
+    </script>
 </head>
 <body>
     <!-- 顶部区域容器 -->
@@ -418,35 +234,15 @@
         <!-- 折叠按钮 -->
         <div class="collapse-button" id="collapse-button">▲</div>
         
-        <!-- 第一行：顶部菜单栏 -->
-        <!--
-        <div class="menu-bar">
-            <div class="menu-item" id="file-button">File</div>
-            <div class="menu-item">Edit</div>
-            <div class="menu-item">View</div>
-            <div class="menu-item">Frame</div>
-            <div class="menu-item">Bin</div>
-            <div class="menu-item">Zoom</div>
-            <div class="menu-item">Scale</div>
-            <div class="menu-item">Color</div>
-            <div class="menu-item">Region</div>
-            <div class="menu-item">WCS</div>
-            <div class="menu-item">Analysis</div>
-            <div class="menu-item">Help</div>
-        </div>
-        -->
-        
         <!-- 第二行：信息显示区 -->
         <div class="info-panel">
             <div class="info-left">
-                <!--
-                <div class="info-label">File:</div>
-                <div class="info-value" id="file-value">未加载</div>
-                -->
                 
+                <!-- 像素值信息 -->
                 <div class="info-label" style="text-align: left;">Value:</div>
                 <div class="info-value" id="pixel-value">-</div>
                 
+                <!-- WCS坐标 -->
                 <div class="info-value" id="wcs-coords-container">
                     <span class="info-label" style="text-align: left;">WCS1:</span>
                     <span class="info-value" id="wcs-value-1">-</span>
@@ -454,6 +250,7 @@
                     <span class="info-value" id="wcs-value-2">-</span>
                 </div>
                 
+                <!-- 图像坐标 -->
                 <div class="info-value" id="image-coords-container">
                     <span class="info-label">X:</span>
                     <span class="info-value" id="image-coords-x">-</span>
@@ -461,7 +258,7 @@
                     <span class="info-value" id="image-coords-y">-</span>
                 </div>
                 
-                <!-- 添加通道切换选项 -->
+                <!-- 通道切换选项 -->
                 <div class="info-value" id="channel-selector-container" style="display: none;">
                     <div style="display: flex; align-items: center; margin-top: 5px;">
                         <span class="info-label">通道:</span>
@@ -478,18 +275,8 @@
                         </select>
                     </div>
                 </div>
-                
-                <!--
-                <div class="info-label">Image:</div>
-                <div class="info-value" id="image-coords">-</div>
-                -->
             </div>
             
-            <div class="preview-container">
-                <h3>预览图</h3>
-                <canvas id="preview-canvas" class="preview-canvas"></canvas>
-                <div id="preview-viewport" class="preview-viewport"></div>
-            </div>
             
             <div class="header-info-container">
                 <h3>头文件信息</h3>
@@ -531,9 +318,12 @@
                             <option value="">未选择</option>
                         </select>
                     </div>
+                    <div style="display: flex; align-items: center; margin-left: 15px;">
+                        <button id="zoom-box-button" style="background-color: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 3px 8px; border-radius: 2px; cursor: pointer;">放大</button>
+                    </div>
                 </div>
                 
-                <!-- HDU选择器移到这里 -->
+                <!-- HDU选择器 -->
                 <div style="margin-left: auto; display: flex; align-items: center;">
                     <span style="margin-right: 10px; color: var(--vscode-foreground);">HDU: </span>
                     <select id="hdu-selector" style="background-color: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); border: 1px solid var(--vscode-dropdown-border); padding: 3px; border-radius: 2px;">
@@ -541,8 +331,6 @@
                     </select>
                 </div>
             </div>
-
-            <!-- 删除单独的HDU切换控制栏 -->
         </div>
     </div>
     
@@ -552,2282 +340,12 @@
         <canvas id="spectrum-canvas" class="spectrum-display" style="display: none;"></canvas>
         <div id="image-placeholder" class="image-placeholder">加载中...</div>
         <div id="pixel-info" class="pixel-info"></div>
-        <!-- 添加回缩放指示器元素，但保持隐藏状态 -->
         <div id="zoom-indicator" class="zoom-indicator" style="display: none;">缩放: 100%</div>
     </div>
-
-    <script>
-        // 调试日志函数
-        function log(message) {
-            // 只输出到控制台，不再向页面添加调试信息
-            console.log(message);
-        }
-        
-        log('页面已加载');
-        
-        // 获取当前vscode的webview API
-        const vscode = acquireVsCodeApi();
-        log('已获取vscode API');
-        
-        // 全局变量，存储当前的图像数据
-        let currentImageData = null;
-        let zoomLevel = 1.0;
-        let panOffsetX = 0;
-        let panOffsetY = 0;
-        let isDragging = false;
-        let dragStartX = 0;
-        let dragStartY = 0;
-        let lastPanOffsetX = 0;
-        let lastPanOffsetY = 0;
-        
-        // 多维数据相关变量
-        let currentChannel = 0;
-        let maxChannel = 0;
-        let currentAxesOrder = [0, 1, 2]; // 默认轴顺序：[通道, 行, 列] - 使用值"0,1,2"对应的轴顺序"1 2 3"
-        let originalImageData = null; // 存储原始多维数据
-        
-        // 光谱数据相关变量
-        let currentSpectrumData = null; // 存储当前光谱数据
-        let availableColumns = []; // 存储可用的列
-        let selectedWavelengthColumn = ""; // 当前选择的波长列
-        let selectedFluxColumn = ""; // 当前选择的流量列
-        
-        // 预览图相关变量
-        let previewCanvas = null;
-        let previewCtx = null;
-        let previewViewport = null;
-        
-        // 初始化缩放按钮
-        document.querySelectorAll('.scale-button').forEach(button => {
-            button.addEventListener('click', () => {
-                // 移除所有活动按钮
-                document.querySelectorAll('.scale-button').forEach(b => b.classList.remove('active'));
-                
-                // 激活当前按钮
-                button.classList.add('active');
-                
-                // 发送缩放类型到扩展
-                const scaleType = button.getAttribute('data-scale');
-                log(`发送缩放类型: ${scaleType}`);
-                vscode.postMessage({
-                    command: 'setScaleType',
-                    scaleType: scaleType
-                });
-            });
-        });
-        
-        // 初始化通道切换控件
-        const channelSlider = document.getElementById('channel-slider');
-        const channelValue = document.getElementById('channel-value');
-        const axesOrderSelector = document.getElementById('axes-order-selector');
-        
-        // 确保轴顺序选择器的默认值与currentAxesOrder一致
-        document.addEventListener('DOMContentLoaded', () => {
-            // 设置轴顺序选择器的默认值为"0,1,2"（对应显示为"1 2 3"）
-            axesOrderSelector.value = "0,1,2";
-        });
-        
-        // 通道滑块事件
-        channelSlider.addEventListener('input', () => {
-            currentChannel = parseInt(channelSlider.value);
-            channelValue.textContent = `${currentChannel}/${maxChannel}`;
-            updateChannelDisplay();
-        });
-        
-        // 轴顺序选择器事件
-        axesOrderSelector.addEventListener('change', () => {
-            currentAxesOrder = axesOrderSelector.value.split(',').map(Number);
-            log(`轴顺序已更改为: ${currentAxesOrder}`);
-            
-            // 重置通道滑块
-            resetChannelSlider();
-            
-            // 更新显示
-            updateChannelDisplay();
-            
-            // 记录当前选择的轴顺序，便于调试
-            log(`当前选择的轴顺序值: ${axesOrderSelector.value}, 解析后: ${currentAxesOrder}`);
-        });
-        
-        // 重置通道滑块
-        function resetChannelSlider() {
-            if (!originalImageData) return;
-            
-            log(`重置通道滑块，当前轴顺序: ${currentAxesOrder}`);
-            
-            // 根据当前轴顺序确定通道维度的大小
-            const channelDimIndex = currentAxesOrder[0]; // 通道维度的索引
-            
-            // 获取通道维度的大小
-            let channelDimSize = 1;
-            if (channelDimIndex === 0 && originalImageData.depth) {
-                channelDimSize = originalImageData.depth;
-                log(`通道维度为深度(0), 大小: ${channelDimSize}`);
-            } else if (channelDimIndex === 1 && originalImageData.height) {
-                channelDimSize = originalImageData.height;
-                log(`通道维度为高度(1), 大小: ${channelDimSize}`);
-            } else if (channelDimIndex === 2 && originalImageData.width) {
-                channelDimSize = originalImageData.width;
-                log(`通道维度为宽度(2), 大小: ${channelDimSize}`);
-            }
-            
-            // 更新滑块范围
-            maxChannel = Math.max(0, channelDimSize - 1);
-            channelSlider.max = maxChannel;
-            
-            // 重置当前通道
-            currentChannel = 0;
-            channelSlider.value = currentChannel;
-            channelValue.textContent = `${currentChannel}/${maxChannel}`;
-            
-            log(`通道滑块已重置，最大值: ${maxChannel}`);
-        }
-        
-        // 更新通道显示
-        function updateChannelDisplay() {
-            if (!originalImageData) return;
-            
-            // 提取当前通道的2D切片
-            const slice2D = extract2DSlice(originalImageData, currentChannel, currentAxesOrder);
-            
-            // 更新当前图像数据
-            currentImageData = slice2D;
-            
-            // 重新渲染图像
-            renderWithTransform();
-            
-            // 更新预览图
-            renderPreview();
-        }
-        
-        // 从3D数据中提取2D切片
-        function extract2DSlice(data3D, channel, axesOrder) {
-            if (!data3D || !data3D.data3D) return data3D;
-            
-            log(`提取2D切片，通道: ${channel}, 轴顺序: ${axesOrder}`);
-            
-            const channelDimIndex = axesOrder[0]; // 通道维度索引
-            const rowDimIndex = axesOrder[1];     // 行维度索引
-            const colDimIndex = axesOrder[2];     // 列维度索引
-            
-            // 获取各维度大小
-            const dims = [
-                data3D.depth || 1,
-                data3D.height || 1,
-                data3D.width || 1
-            ];
-            
-            log(`数据维度: 深度=${dims[0]}, 高度=${dims[1]}, 宽度=${dims[2]}`);
-            log(`维度映射: 通道维度=${channelDimIndex}, 行维度=${rowDimIndex}, 列维度=${colDimIndex}`);
-            
-            // 计算结果2D切片的尺寸
-            const resultWidth = dims[colDimIndex];
-            const resultHeight = dims[rowDimIndex];
-            
-            log(`结果切片尺寸: ${resultWidth}x${resultHeight}`);
-            
-            // 创建结果数据
-            const result = {
-                data: new Float32Array(resultWidth * resultHeight),
-                width: resultWidth,
-                height: resultHeight,
-                min: Infinity,
-                max: -Infinity
-            };
-            
-            // 填充2D切片数据
-            for (let r = 0; r < resultHeight; r++) {
-                for (let c = 0; c < resultWidth; c++) {
-                    // 计算原始3D数据中的索引
-                    const indices = [0, 0, 0];
-                    indices[channelDimIndex] = channel;
-                    indices[rowDimIndex] = r;
-                    indices[colDimIndex] = c;
-                    
-                    const srcIdx = indices[0] * dims[1] * dims[2] + indices[1] * dims[2] + indices[2];
-                    const destIdx = r * resultWidth + c;
-                    
-                    // 复制数据
-                    result.data[destIdx] = data3D.data3D[srcIdx];
-                    
-                    // 更新最小/最大值
-                    result.min = Math.min(result.min, result.data[destIdx]);
-                    result.max = Math.max(result.max, result.data[destIdx]);
-                }
-            }
-            
-            return result;
-        }
-        
-        // 获取Canvas元素
-        const canvas = document.getElementById('fits-canvas');
-        const ctx = canvas.getContext('2d');
-        log('已获取Canvas上下文');
-        
-        // 获取预览图Canvas
-        previewCanvas = document.getElementById('preview-canvas');
-        previewCtx = previewCanvas.getContext('2d');
-        previewViewport = document.getElementById('preview-viewport');
-        
-        // 图像容器鼠标移动事件，用于显示像素值
-        const imageContainer = document.querySelector('.image-container');
-        const pixelInfo = document.getElementById('pixel-info');
-        const zoomIndicator = document.getElementById('zoom-indicator');
-        
-        // 鼠标滚轮事件 - 缩放
-        imageContainer.addEventListener('wheel', (event) => {
-            event.preventDefault();
-            
-            if (!currentImageData) return;
-            
-            // 计算缩放因子
-            const zoomFactor = event.deltaY < 0 ? 1.1 : 0.9;
-            const newZoomLevel = Math.max(0.1, Math.min(1000, zoomLevel * zoomFactor));
-            
-            // 获取当前视图的中心点
-            const containerWidth = canvas.width;
-            const containerHeight = canvas.height;
-            const centerX = containerWidth / 2;
-            const centerY = containerHeight / 2;
-            
-            // 计算当前中心点在图像上的位置
-            const imageCenterX = (centerX - panOffsetX) / zoomLevel;
-            const imageCenterY = (centerY - panOffsetY) / zoomLevel;
-            
-            // 更新缩放级别
-            zoomLevel = newZoomLevel;
-            
-            // 计算新的偏移量，使视图中心保持不变
-            panOffsetX = centerX - imageCenterX * zoomLevel;
-            panOffsetY = centerY - imageCenterY * zoomLevel;
-            
-            // 更新缩放指示器（虽然已隐藏）
-            zoomIndicator.textContent = `缩放: ${Math.round(zoomLevel * 100)}%`;
-            
-            // 重新渲染图像
-            renderWithTransform();
-            
-            // 更新预览图中的视口
-            updatePreviewViewport();
-        });
-        
-        // 鼠标按下事件 - 开始拖动
-        imageContainer.addEventListener('mousedown', (event) => {
-            if (!currentImageData || event.button !== 0) return;
-            
-            isDragging = true;
-            dragStartX = event.clientX;
-            dragStartY = event.clientY;
-            lastPanOffsetX = panOffsetX;
-            lastPanOffsetY = panOffsetY;
-            
-            // 改变鼠标样式
-            imageContainer.style.cursor = 'grabbing';
-        });
-        
-        // 鼠标移动事件 - 拖动和显示像素值
-        imageContainer.addEventListener('mousemove', (event) => {
-            if (!currentImageData) return;
-            
-            // 获取Canvas的位置和尺寸
-            const rect = canvas.getBoundingClientRect();
-            
-            // 处理拖动
-            if (isDragging) {
-                const deltaX = event.clientX - dragStartX;
-                const deltaY = event.clientY - dragStartY;
-                
-                panOffsetX = lastPanOffsetX + deltaX;
-                panOffsetY = lastPanOffsetY + deltaY;
-                
-                // 重新渲染图像
-                renderWithTransform();
-                
-                // 更新预览图中的视口
-                updatePreviewViewport();
-                return;
-            }
-            
-            // 检查鼠标是否在Canvas上
-            if (event.clientX >= rect.left && event.clientX <= rect.right &&
-                event.clientY >= rect.top && event.clientY <= rect.bottom) {
-                
-                // 计算Canvas上的坐标
-                const canvasX = event.clientX - rect.left;
-                const canvasY = event.clientY - rect.top;
-                
-                // 计算图像上的坐标（考虑缩放和平移）
-                const imageX = Math.floor((canvasX - panOffsetX) / zoomLevel);
-                const imageY = Math.floor((canvasY - panOffsetY) / zoomLevel);
-                
-                // 确保坐标在图像范围内
-                if (imageX >= 0 && imageX < currentImageData.width && imageY >= 0 && imageY < currentImageData.height) {
-                    // 更新坐标显示
-                    document.getElementById('image-coords-x').textContent = imageX;
-                    document.getElementById('image-coords-y').textContent = imageY;
-                    
-                    // 获取像素值
-                    const pixelIndex = imageY * currentImageData.width + imageX;
-                    
-                    // 直接显示原始像素值
-                    if (pixelIndex >= 0 && pixelIndex < currentImageData.data.length) {
-                        const rawValue = currentImageData.data[pixelIndex];
-                        document.getElementById('pixel-value').textContent = rawValue.toString();
-                    }
-                    
-                    // 发送坐标到扩展获取WCS坐标
-                    vscode.postMessage({
-                        command: 'getPixelValue',
-                        x: imageX,
-                        y: imageY
-                    });
-                }
-            }
-        });
-        
-        // 鼠标抬起事件 - 结束拖动
-        window.addEventListener('mouseup', () => {
-            if (isDragging) {
-                isDragging = false;
-                imageContainer.style.cursor = 'default';
-            }
-        });
-        
-        // 鼠标离开图像容器时隐藏像素信息
-        imageContainer.addEventListener('mouseleave', () => {
-            pixelInfo.style.display = 'none';
-        });
-        
-        // 光谱Canvas的鼠标移动事件
-        const spectrumCanvas = document.getElementById('spectrum-canvas');
-        
-        // 光谱显示的缩放和平移变量
-        let spectrumZoomLevel = 1.0;
-        let spectrumPanOffsetX = 0;
-        let spectrumPanOffsetY = 0;
-        let spectrumIsDragging = false;
-        let spectrumDragStartX = 0;
-        let spectrumDragStartY = 0;
-        let spectrumLastPanOffsetX = 0;
-        let spectrumLastPanOffsetY = 0;
-        
-        // 光谱Canvas的鼠标滚轮事件 - 缩放
-        spectrumCanvas.addEventListener('wheel', (event) => {
-            event.preventDefault();
-            
-            // 获取当前光谱数据
-            const spectrumData = spectrumCanvas.dataset.spectrumData;
-            if (!spectrumData) return;
-            
-            // 计算缩放因子 - 使用更平滑的缩放
-            const zoomFactor = event.deltaY < 0 ? 1.1 : 0.9; // 调整缩放步长
-            const newZoomLevel = Math.max(0.1, Math.min(10, spectrumZoomLevel * zoomFactor)); // 增加最大缩放倍率
-            
-            // 获取鼠标在Canvas上的位置
-            const rect = spectrumCanvas.getBoundingClientRect();
-            const mouseX = event.clientX - rect.left;
-            const mouseY = event.clientY - rect.top;
-            
-            // 设置边距
-            const margin = { top: 40, right: 40, bottom: 60, left: 70 };
-            
-            // 只有当鼠标在绘图区域内时才进行缩放
-            if (mouseX >= margin.left && mouseX <= (spectrumCanvas.width - margin.right) &&
-                mouseY >= margin.top && mouseY <= (spectrumCanvas.height - margin.bottom)) {
-                
-                // 获取数据范围
-                const data = JSON.parse(spectrumData);
-                const minX = Math.min(...data.wavelength);
-                const maxX = Math.max(...data.wavelength);
-                const plotWidth = spectrumCanvas.width - margin.left - margin.right;
-                
-                // 计算当前可见数据范围
-                const scaleX = plotWidth / (maxX - minX);
-                const visibleMinX = minX + spectrumPanOffsetX / (scaleX * spectrumZoomLevel);
-                
-                // 计算鼠标在数据坐标系中的位置
-                const mouseDataX = visibleMinX + (mouseX - margin.left) / (scaleX * spectrumZoomLevel);
-                
-                // 更新缩放级别
-                spectrumZoomLevel = newZoomLevel;
-                
-                // 计算新的可见数据范围，保持鼠标指向的数据点不变
-                const newScaleX = plotWidth / (maxX - minX);
-                const newVisibleMinX = mouseDataX - (mouseX - margin.left) / (newScaleX * spectrumZoomLevel);
-                
-                // 更新平移偏移量，使鼠标位置保持在同一数据点上
-                spectrumPanOffsetX = (newVisibleMinX - minX) * newScaleX * spectrumZoomLevel;
-                
-                // 重新渲染光谱
-                renderSpectrum(data, true);
-                
-                // 显示缩放指示器
-                showZoomIndicator(spectrumZoomLevel);
-            }
-        });
-        
-        // 光谱Canvas的鼠标按下事件 - 开始拖动
-        spectrumCanvas.addEventListener('mousedown', (event) => {
-            if (event.button !== 0) return; // 只处理左键
-            
-            spectrumIsDragging = true;
-            spectrumDragStartX = event.clientX;
-            spectrumDragStartY = event.clientY;
-            spectrumLastPanOffsetX = spectrumPanOffsetX;
-            spectrumLastPanOffsetY = spectrumPanOffsetY;
-            
-            // 改变鼠标样式
-            spectrumCanvas.style.cursor = 'grabbing';
-        });
-        
-        // 光谱Canvas的鼠标移动事件 - 拖动和显示值
-        spectrumCanvas.addEventListener('mousemove', (event) => {
-            const rect = spectrumCanvas.getBoundingClientRect();
-            
-            // 处理拖动
-            if (spectrumIsDragging) {
-                const deltaX = event.clientX - spectrumDragStartX;
-                const deltaY = event.clientY - spectrumDragStartY;
-                
-                // 反转X方向的拖动，使其更符合直觉
-                spectrumPanOffsetX = spectrumLastPanOffsetX - deltaX;
-                spectrumPanOffsetY = spectrumLastPanOffsetY + deltaY;
-                
-                // 获取当前光谱数据
-                const spectrumData = spectrumCanvas.dataset.spectrumData;
-                if (spectrumData) {
-                    // 重新渲染光谱
-                    const data = JSON.parse(spectrumData);
-                    renderSpectrum(data, true);
-                }
-                return;
-            }
-            
-            // 检查鼠标是否在Canvas上
-            if (event.clientX >= rect.left && event.clientX <= rect.right &&
-                event.clientY >= rect.top && event.clientY <= rect.bottom) {
-                
-                // 获取光谱数据
-                const spectrumData = spectrumCanvas.dataset.spectrumData;
-                if (!spectrumData) return;
-                
-                const data = JSON.parse(spectrumData);
-                if (!data || !data.wavelength || !data.flux) return;
-                
-                // 计算Canvas上的坐标
-                const canvasX = event.clientX - rect.left;
-                const canvasY = event.clientY - rect.top;
-                
-                // 设置边距
-                const margin = { top: 40, right: 40, bottom: 60, left: 70 };
-                const plotWidth = spectrumCanvas.width - margin.left - margin.right;
-                const plotHeight = spectrumCanvas.height - margin.top - margin.bottom;
-                
-                // 检查是否在绘图区域内
-                if (canvasX >= margin.left && canvasX <= (spectrumCanvas.width - margin.right) &&
-                    canvasY >= margin.top && canvasY <= (spectrumCanvas.height - margin.bottom)) {
-                    
-                    // 计算数据范围
-                    const minX = Math.min(...data.wavelength);
-                    const maxX = Math.max(...data.wavelength);
-                    const minY = Math.min(...data.flux);
-                    const maxY = Math.max(...data.flux);
-                    
-                    // 添加padding到数据范围
-                    const rangeY = maxY - minY;
-                    const rangeX = maxX - minX;
-                    const paddedMinY = minY - rangeY * 0.05;
-                    const paddedMaxY = maxY + rangeY * 0.05;
-                    const paddedMinX = minX - rangeX * 0.02;
-                    const paddedMaxX = maxX + rangeX * 0.02;
-                    
-                    // 计算数据到屏幕的映射比例
-                    const scaleX = plotWidth / (paddedMaxX - paddedMinX);
-                    
-                    // 计算可见数据范围
-                    const visibleMinX = paddedMinX + spectrumPanOffsetX / (scaleX * spectrumZoomLevel);
-                    
-                    // 计算鼠标在数据坐标系中的位置
-                    const dataX = visibleMinX + (canvasX - margin.left) / (scaleX * spectrumZoomLevel);
-                    
-                    // 使用二分查找找到最接近的数据点
-                    const dataIndex = findClosestDataPoint(data.wavelength, dataX);
-                    
-                    if (dataIndex >= 0 && dataIndex < data.flux.length) {
-                        // 更新坐标和值显示
-                        document.getElementById('image-coords-x').textContent = data.wavelength[dataIndex].toFixed(2);
-                        document.getElementById('image-coords-y').textContent = '-';
-                        document.getElementById('pixel-value').textContent = data.flux[dataIndex].toString();
-                        
-                        // 不更新WCS信息，保持为空
-                        // document.getElementById('wcs-value-1').textContent = `波长: ${data.wavelength[dataIndex].toFixed(6)}`;
-                        // document.getElementById('wcs-value-2').textContent = `流量: ${data.flux[dataIndex].toFixed(6)}`;
-                        
-                        // 计算最近数据点在Canvas上的实际位置
-                        const pointX = margin.left + ((data.wavelength[dataIndex] - visibleMinX) * scaleX * spectrumZoomLevel);
-                        const pointY = margin.top + plotHeight - ((data.flux[dataIndex] - paddedMinY) / (paddedMaxY - paddedMinY)) * plotHeight;
-                        
-                        // 绘制辅助线在最近的数据点位置
-                        drawSpectrumCrosshair(pointX, pointY);
-                    }
-                } else {
-                    // 如果鼠标不在绘图区域内，清除辅助线
-                    clearSpectrumCrosshair();
-                }
-            }
-        });
-        
-        // 二分查找最接近的数据点
-        function findClosestDataPoint(array, target) {
-            if (array.length === 0) return -1;
-            if (array.length === 1) return 0;
-            
-            let left = 0;
-            let right = array.length - 1;
-            
-            // 处理边界情况
-            if (target <= array[left]) return left;
-            if (target >= array[right]) return right;
-            
-            // 二分查找
-            while (left <= right) {
-                const mid = Math.floor((left + right) / 2);
-                
-                if (array[mid] === target) {
-                    return mid; // 找到精确匹配
-                }
-                
-                if (array[mid] < target) {
-                    left = mid + 1;
-                } else {
-                    right = mid - 1;
-                }
-            }
-            
-            // 此时 left > right
-            // 比较哪个更接近目标值
-            if (right < 0) return 0;
-            if (left >= array.length) return array.length - 1;
-            
-            const diffLeft = Math.abs(array[left] - target);
-            const diffRight = Math.abs(array[right] - target);
-            
-            return diffLeft < diffRight ? left : right;
-        }
-        
-        // 光谱Canvas的鼠标抬起事件 - 结束拖动
-        window.addEventListener('mouseup', () => {
-            if (spectrumIsDragging) {
-                spectrumIsDragging = false;
-                spectrumCanvas.style.cursor = 'default';
-            }
-        });
-        
-        // 清除光谱十字准线
-        function clearSpectrumCrosshair() {
-            const ctx = crosshairOverlay.getContext('2d');
-            ctx.clearRect(0, 0, crosshairOverlay.width, crosshairOverlay.height);
-        }
-        
-        // 光谱Canvas的鼠标离开事件 - 清除辅助线
-        spectrumCanvas.addEventListener('mouseleave', () => {
-            clearSpectrumCrosshair();
-        });
-        
-        // 创建辅助线叠加层
-        const crosshairOverlay = document.createElement('canvas');
-        crosshairOverlay.style.position = 'absolute';
-        crosshairOverlay.style.top = '0';
-        crosshairOverlay.style.left = '0';
-        crosshairOverlay.style.pointerEvents = 'none';
-        crosshairOverlay.style.zIndex = '10';
-        document.querySelector('.image-container').appendChild(crosshairOverlay);
-        
-        // 绘制光谱十字准线
-        function drawSpectrumCrosshair(x, y) {
-            const container = document.querySelector('.image-container');
-            const canvas = document.getElementById('spectrum-canvas');
-            const margin = { top: 40, right: 40, bottom: 60, left: 70 };
-            
-            // 调整叠加层大小以匹配容器
-            crosshairOverlay.width = container.clientWidth;
-            crosshairOverlay.height = container.clientHeight;
-            
-            const ctx = crosshairOverlay.getContext('2d');
-            
-            // 清除之前的辅助线
-            ctx.clearRect(0, 0, crosshairOverlay.width, crosshairOverlay.height);
-            
-            // 检查坐标是否在绘图区域内
-            // 注意：这里使用的是屏幕坐标，已经应用了缩放和平移
-            if (x < margin.left || x > (canvas.width - margin.right) ||
-                y < margin.top || y > (canvas.height - margin.bottom)) {
-                return; // 如果不在绘图区域内，不绘制辅助线
-            }
-            
-            // 设置辅助线样式
-            ctx.strokeStyle = 'rgba(255, 255, 0, 0.7)';
-            ctx.lineWidth = 1;
-            ctx.setLineDash([5, 3]);
-            
-            // 绘制水平辅助线 - 限制在绘图区域内
-            ctx.beginPath();
-            ctx.moveTo(margin.left, y);
-            ctx.lineTo(canvas.width - margin.right, y);
-            ctx.stroke();
-            
-            // 绘制垂直辅助线 - 限制在绘图区域内
-            ctx.beginPath();
-            ctx.moveTo(x, margin.top);
-            ctx.lineTo(x, canvas.height - margin.bottom);
-            ctx.stroke();
-            
-            // 在交叉点绘制一个小圆圈，标记数据点位置
-            ctx.setLineDash([]);
-            ctx.fillStyle = 'rgba(255, 255, 0, 0.9)';
-            ctx.beginPath();
-            ctx.arc(x, y, 4, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.strokeStyle = 'black';
-            ctx.lineWidth = 1;
-            ctx.stroke();
-            
-            // 重置线型
-            ctx.setLineDash([]);
-        }
-        
-        // 使用变换渲染图像
-        function renderWithTransform() {
-            if (!currentImageData) return;
-            
-            // 清除Canvas
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            // 设置Canvas尺寸为容器尺寸
-            const container = imageContainer;
-            canvas.width = container.clientWidth;
-            canvas.height = container.clientHeight;
-            
-            // 绘制图像（应用缩放和平移）
-            ctx.save();
-            ctx.translate(panOffsetX, panOffsetY);
-            ctx.scale(zoomLevel, zoomLevel);
-            
-            // 检查图像大小，如果超过阈值，则使用分块处理
-            const isLargeImage = currentImageData.width * currentImageData.height > 4000000; // 约4百万像素的阈值
-            
-            if (isLargeImage) {
-                // 使用分块处理大图像
-                renderLargeImageWithChunks();
-            } else {
-                // 使用标准方法处理小图像
-                renderStandardImage();
-            }
-            
-            ctx.restore();
-        }
-        
-        // 标准图像渲染方法
-        function renderStandardImage() {
-            // 创建ImageData对象
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = currentImageData.width;
-            tempCanvas.height = currentImageData.height;
-            const tempCtx = tempCanvas.getContext('2d');
-            const imageData = tempCtx.createImageData(currentImageData.width, currentImageData.height);
-            
-            // 计算缩放因子
-            const scale = 255 / (currentImageData.max - currentImageData.min);
-            
-            try {
-                // 使用 TypedArray 和向量化操作处理图像数据
-                const pixelCount = currentImageData.width * currentImageData.height;
-                const rgbaData = new Uint8ClampedArray(pixelCount * 4);
-                
-                // 向量化处理 - 一次性计算所有像素值
-                for (let i = 0; i < pixelCount; i++) {
-                    // 计算缩放后的灰度值
-                    const scaledValue = Math.max(0, Math.min(255, Math.round((currentImageData.data[i] - currentImageData.min) * scale)));
-                    
-                    // 设置 RGBA 值 (灰度图像，R=G=B)
-                    const idx = i * 4;
-                    rgbaData[idx] = scaledValue;     // R
-                    rgbaData[idx + 1] = scaledValue; // G
-                    rgbaData[idx + 2] = scaledValue; // B
-                    rgbaData[idx + 3] = 255;         // A
-                }
-                
-                // 直接设置 imageData 的数据
-                imageData.data.set(rgbaData);
-                
-                // 将ImageData绘制到临时Canvas
-                tempCtx.putImageData(imageData, 0, 0);
-                
-                // 将临时Canvas绘制到主Canvas
-                ctx.drawImage(tempCanvas, 0, 0);
-                
-            } catch (error) {
-                log(`渲染图像时出错: ${error.message}`);
-                document.getElementById('image-placeholder').textContent = `渲染图像时出错: ${error.message}`;
-            }
-        }
-        
-        // 分块渲染大图像
-        function renderLargeImageWithChunks() {
-            try {
-                // 创建临时Canvas
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = currentImageData.width;
-                tempCanvas.height = currentImageData.height;
-                const tempCtx = tempCanvas.getContext('2d');
-                
-                // 计算缩放因子
-                const scale = 255 / (currentImageData.max - currentImageData.min);
-                
-                // 计算可见区域在原始图像中的范围
-                const visibleLeft = Math.max(0, Math.floor(-panOffsetX / zoomLevel));
-                const visibleTop = Math.max(0, Math.floor(-panOffsetY / zoomLevel));
-                const visibleRight = Math.min(currentImageData.width, Math.ceil((canvas.width - panOffsetX) / zoomLevel));
-                const visibleBottom = Math.min(currentImageData.height, Math.ceil((canvas.height - panOffsetY) / zoomLevel));
-                
-                // 计算可见区域的宽度和高度
-                const visibleWidth = visibleRight - visibleLeft;
-                const visibleHeight = visibleBottom - visibleTop;
-                
-                // 如果可见区域很小，只渲染可见部分
-                if (visibleWidth > 0 && visibleHeight > 0 && visibleWidth * visibleHeight < currentImageData.width * currentImageData.height / 2) {
-                    // 创建可见区域的ImageData
-                    const visibleImageData = tempCtx.createImageData(visibleWidth, visibleHeight);
-                    const rgbaData = new Uint8ClampedArray(visibleWidth * visibleHeight * 4);
-                    
-                    // 处理可见区域的像素
-                    for (let y = 0; y < visibleHeight; y++) {
-                        for (let x = 0; x < visibleWidth; x++) {
-                            const srcIdx = (y + visibleTop) * currentImageData.width + (x + visibleLeft);
-                            const destIdx = (y * visibleWidth + x) * 4;
-                            
-                            // 计算缩放后的灰度值
-                            const scaledValue = Math.max(0, Math.min(255, Math.round((currentImageData.data[srcIdx] - currentImageData.min) * scale)));
-                            
-                            // 设置 RGBA 值
-                            rgbaData[destIdx] = scaledValue;     // R
-                            rgbaData[destIdx + 1] = scaledValue; // G
-                            rgbaData[destIdx + 2] = scaledValue; // B
-                            rgbaData[destIdx + 3] = 255;         // A
-                        }
-                    }
-                    
-                    // 设置ImageData
-                    visibleImageData.data.set(rgbaData);
-                    
-                    // 将可见区域绘制到临时Canvas
-                    tempCtx.putImageData(visibleImageData, visibleLeft, visibleTop);
-                    
-                    // 将临时Canvas绘制到主Canvas
-                    ctx.drawImage(tempCanvas, 0, 0);
-                    
-                    log(`已渲染可见区域: ${visibleWidth}x${visibleHeight} 像素`);
-                } else {
-                    // 分块处理整个图像
-                    const chunkSize = 1000; // 每块的像素行数
-                    
-                    // 创建整个图像的ImageData
-                    const fullImageData = tempCtx.createImageData(currentImageData.width, currentImageData.height);
-                    const fullData = new Uint8ClampedArray(currentImageData.width * currentImageData.height * 4);
-                    
-                    // 分块处理
-                    for (let startY = 0; startY < currentImageData.height; startY += chunkSize) {
-                        const endY = Math.min(startY + chunkSize, currentImageData.height);
-                        const chunkHeight = endY - startY;
-                        
-                        // 处理当前块的像素
-                        for (let y = startY; y < endY; y++) {
-                            const rowOffset = y * currentImageData.width;
-                            
-                            for (let x = 0; x < currentImageData.width; x++) {
-                                const srcIdx = rowOffset + x;
-                                const destIdx = srcIdx * 4;
-                                
-                                // 计算缩放后的灰度值
-                                const scaledValue = Math.max(0, Math.min(255, Math.round((currentImageData.data[srcIdx] - currentImageData.min) * scale)));
-                                
-                                // 设置 RGBA 值
-                                fullData[destIdx] = scaledValue;     // R
-                                fullData[destIdx + 1] = scaledValue; // G
-                                fullData[destIdx + 2] = scaledValue; // B
-                                fullData[destIdx + 3] = 255;         // A
-                            }
-                        }
-                    }
-                    
-                    // 设置ImageData
-                    fullImageData.data.set(fullData);
-                    
-                    // 将ImageData绘制到临时Canvas
-                    tempCtx.putImageData(fullImageData, 0, 0);
-                    
-                    // 将临时Canvas绘制到主Canvas
-                    ctx.drawImage(tempCanvas, 0, 0);
-                    
-                    log(`已渲染完整图像: ${currentImageData.width}x${currentImageData.height} 像素`);
-                }
-            } catch (error) {
-                log(`分块渲染图像时出错: ${error.message}`);
-                document.getElementById('image-placeholder').textContent = `渲染图像时出错: ${error.message}`;
-            }
-        }
-        
-        // 渲染预览图
-        function renderPreview() {
-            if (!currentImageData || !previewCanvas || !previewCtx) return;
-            
-            // 设置预览图Canvas尺寸
-            const container = document.querySelector('.preview-container');
-            const containerWidth = container.clientWidth - 20; // 减去内边距
-            const containerHeight = container.clientHeight - 50; // 减去标题和内边距
-            
-            previewCanvas.width = containerWidth;
-            previewCanvas.height = containerHeight;
-            
-            // 计算缩放比例，使图像适应预览区域
-            const scaleX = containerWidth / currentImageData.width;
-            const scaleY = containerHeight / currentImageData.height;
-            const scale = Math.min(scaleX, scaleY);
-            
-            // 计算居中偏移
-            const offsetX = (containerWidth - currentImageData.width * scale) / 2;
-            const offsetY = (containerHeight - currentImageData.height * scale) / 2;
-            
-            // 清除预览Canvas
-            previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
-            
-            // 检查图像大小，如果超过阈值，则使用下采样方法
-            const isLargeImage = currentImageData.width * currentImageData.height > 4000000; // 约4百万像素的阈值
-            
-            if (isLargeImage) {
-                // 使用下采样方法渲染大图像预览
-                renderLargeImagePreview(scale, offsetX, offsetY);
-            } else {
-                // 使用标准方法渲染小图像预览
-                renderStandardPreview(scale, offsetX, offsetY);
-            }
-            
-            // 存储预览图的缩放和偏移信息，用于计算视口位置
-            previewCanvas.dataset.scale = scale;
-            previewCanvas.dataset.offsetX = offsetX;
-            previewCanvas.dataset.offsetY = offsetY;
-            
-            // 更新预览图中的视口
-            updatePreviewViewport();
-        }
-        
-        // 标准预览图渲染方法
-        function renderStandardPreview(scale, offsetX, offsetY) {
-            try {
-                // 创建ImageData对象
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = currentImageData.width;
-                tempCanvas.height = currentImageData.height;
-                const tempCtx = tempCanvas.getContext('2d');
-                const imageData = tempCtx.createImageData(currentImageData.width, currentImageData.height);
-                
-                // 计算缩放因子
-                const dataScale = 255 / (currentImageData.max - currentImageData.min);
-                
-                // 使用 TypedArray 和向量化操作处理图像数据
-                const pixelCount = currentImageData.width * currentImageData.height;
-                const rgbaData = new Uint8ClampedArray(pixelCount * 4);
-                
-                // 向量化处理 - 一次性计算所有像素值
-                for (let i = 0; i < pixelCount; i++) {
-                    // 计算缩放后的灰度值
-                    const scaledValue = Math.max(0, Math.min(255, Math.round((currentImageData.data[i] - currentImageData.min) * dataScale)));
-                    
-                    // 设置 RGBA 值 (灰度图像，R=G=B)
-                    const idx = i * 4;
-                    rgbaData[idx] = scaledValue;     // R
-                    rgbaData[idx + 1] = scaledValue; // G
-                    rgbaData[idx + 2] = scaledValue; // B
-                    rgbaData[idx + 3] = 255;         // A
-                }
-                
-                // 直接设置 imageData 的数据
-                imageData.data.set(rgbaData);
-                
-                // 将ImageData绘制到临时Canvas
-                tempCtx.putImageData(imageData, 0, 0);
-                
-                // 将临时Canvas绘制到预览Canvas（缩放以适应预览区域）
-                previewCtx.drawImage(tempCanvas, offsetX, offsetY, 
-                                    currentImageData.width * scale, 
-                                    currentImageData.height * scale);
-            } catch (error) {
-                log(`渲染预览图时出错: ${error.message}`);
-            }
-        }
-        
-        // 大图像预览渲染方法（使用下采样）
-        function renderLargeImagePreview(scale, offsetX, offsetY) {
-            try {
-                // 计算下采样因子，确保预览图不会太大
-                const downsampleFactor = Math.max(1, Math.ceil(Math.sqrt(currentImageData.width * currentImageData.height / 250000)));
-                
-                // 计算下采样后的尺寸
-                const sampledWidth = Math.ceil(currentImageData.width / downsampleFactor);
-                const sampledHeight = Math.ceil(currentImageData.height / downsampleFactor);
-                
-                log(`预览图下采样: 原始=${currentImageData.width}x${currentImageData.height}, 采样因子=${downsampleFactor}, 采样后=${sampledWidth}x${sampledHeight}`);
-                
-                // 创建下采样后的Canvas
-                const sampledCanvas = document.createElement('canvas');
-                sampledCanvas.width = sampledWidth;
-                sampledCanvas.height = sampledHeight;
-                const sampledCtx = sampledCanvas.getContext('2d');
-                const sampledImageData = sampledCtx.createImageData(sampledWidth, sampledHeight);
-                
-                // 计算缩放因子
-                const dataScale = 255 / (currentImageData.max - currentImageData.min);
-                
-                // 下采样处理
-                const sampledData = new Uint8ClampedArray(sampledWidth * sampledHeight * 4);
-                
-                for (let y = 0; y < sampledHeight; y++) {
-                    for (let x = 0; x < sampledWidth; x++) {
-                        // 计算原始图像中的对应区域
-                        const srcX = x * downsampleFactor;
-                        const srcY = y * downsampleFactor;
-                        
-                        // 计算区域平均值
-                        let sum = 0;
-                        let count = 0;
-                        
-                        for (let dy = 0; dy < downsampleFactor && srcY + dy < currentImageData.height; dy++) {
-                            for (let dx = 0; dx < downsampleFactor && srcX + dx < currentImageData.width; dx++) {
-                                const srcIdx = (srcY + dy) * currentImageData.width + (srcX + dx);
-                                sum += currentImageData.data[srcIdx];
-                                count++;
-                            }
-                        }
-                        
-                        // 计算平均值
-                        const avgValue = count > 0 ? sum / count : 0;
-                        
-                        // 计算缩放后的灰度值
-                        const scaledValue = Math.max(0, Math.min(255, Math.round((avgValue - currentImageData.min) * dataScale)));
-                        
-                        // 设置采样后的像素值
-                        const destIdx = (y * sampledWidth + x) * 4;
-                        sampledData[destIdx] = scaledValue;     // R
-                        sampledData[destIdx + 1] = scaledValue; // G
-                        sampledData[destIdx + 2] = scaledValue; // B
-                        sampledData[destIdx + 3] = 255;         // A
-                    }
-                }
-                
-                // 设置采样后的图像数据
-                sampledImageData.data.set(sampledData);
-                sampledCtx.putImageData(sampledImageData, 0, 0);
-                
-                // 计算预览图中的绘制尺寸
-                const previewWidth = currentImageData.width * scale;
-                const previewHeight = currentImageData.height * scale;
-                
-                // 将采样后的Canvas绘制到预览Canvas
-                previewCtx.drawImage(sampledCanvas, offsetX, offsetY, previewWidth, previewHeight);
-                
-                log('大图像预览渲染完成');
-            } catch (error) {
-                log(`渲染大图像预览时出错: ${error.message}`);
-            }
-        }
-        
-        // 更新预览图中的视口
-        function updatePreviewViewport() {
-            if (!currentImageData || !previewCanvas || !previewViewport) return;
-            
-            // 获取预览图的缩放和偏移信息
-            const previewScale = parseFloat(previewCanvas.dataset.scale) || 1;
-            const previewOffsetX = parseFloat(previewCanvas.dataset.offsetX) || 0;
-            const previewOffsetY = parseFloat(previewCanvas.dataset.offsetY) || 0;
-            
-            // 获取主Canvas的尺寸
-            const mainWidth = canvas.width;
-            const mainHeight = canvas.height;
-            
-            // 计算视口在原始图像上的位置
-            const viewportLeft = Math.max(0, -panOffsetX / zoomLevel);
-            const viewportTop = Math.max(0, -panOffsetY / zoomLevel);
-            const viewportRight = Math.min(currentImageData.width, (mainWidth - panOffsetX) / zoomLevel);
-            const viewportBottom = Math.min(currentImageData.height, (mainHeight - panOffsetY) / zoomLevel);
-            
-            // 计算视口在预览图上的位置
-            const vpLeft = viewportLeft * previewScale + previewOffsetX;
-            const vpTop = viewportTop * previewScale + previewOffsetY;
-            const vpWidth = (viewportRight - viewportLeft) * previewScale;
-            const vpHeight = (viewportBottom - viewportTop) * previewScale;
-            
-            // 设置视口样式
-            previewViewport.style.left = `${vpLeft}px`;
-            previewViewport.style.top = `${vpTop}px`;
-            previewViewport.style.width = `${vpWidth}px`;
-            previewViewport.style.height = `${vpHeight}px`;
-            previewViewport.style.display = 'block';
-        }
-        
-        // 预览图点击事件 - 移动视图到点击位置
-        previewCanvas.addEventListener('click', (event) => {
-            // 禁用点击预览图放大功能
-        });
-        
-        // 监听来自扩展的消息
-        window.addEventListener('message', event => {
-            const message = event.data;
-            log(`收到消息: ${message.command}`);
-            
-            switch (message.command) {
-                case 'setFileName':
-                    document.getElementById('file-value').textContent = message.fileName;
-                    break;
-                    
-                case 'setObjectName':
-                    document.getElementById('object-value').textContent = message.objectName || '未知';
-                    break;
-                    
-                case 'setHeaderInfo':
-                    // 显示头文件信息
-                    if (message.text) {
-                        document.getElementById('header-info').textContent = message.text;
-                    } else if (message.html) {
-                        // 向后兼容
-                        document.getElementById('header-info').innerHTML = message.html;
-                    }
-                    break;
-                    
-                case 'setStatsInfo':
-                    document.getElementById('stats-info').innerHTML = message.html || '无统计信息';
-                    break;
-                    
-                case 'setPixelValue':
-                    document.getElementById('pixel-value').textContent = message.value || '-';
-                    document.getElementById('wcs-value-1').textContent = message.wcs1 || '-';
-                    document.getElementById('wcs-value-2').textContent = message.wcs2 || '-';
-                    break;
-                    
-                case 'setWCSValue':
-                    document.getElementById('wcs-value-1').textContent = message.wcs1 || '-';
-                    document.getElementById('wcs-value-2').textContent = message.wcs2 || '-';
-                    break;
-                    
-                case 'setImageDataFromFile':
-                    log(`收到图像数据文件URI: ${message.fileUri}`);
-                    // 保存当前的缩放和平移状态
-                    const prevZoomLevel = currentImageData ? zoomLevel : null;
-                    const prevPanOffsetX = currentImageData ? panOffsetX : null;
-                    const prevPanOffsetY = currentImageData ? panOffsetY : null;
-                    const prevWidth = currentImageData ? currentImageData.width : null;
-                    const prevHeight = currentImageData ? currentImageData.height : null;
-                    
-                    loadImageDataFromFile(message.fileUri, prevZoomLevel, prevPanOffsetX, prevPanOffsetY, prevWidth, prevHeight);
-                    
-                    // 如果有缩放类型信息，显示临时消息
-                    if (message.fileUri.includes('scaled-data') && message.fileUri.includes('scaleType')) {
-                        // 从URL中提取缩放类型
-                        const scaleTypeMatch = message.fileUri.match(/scaleType%22%3A%22([^%]+)%22/);
-                        if (scaleTypeMatch && scaleTypeMatch[1]) {
-                            showTemporaryMessage(`已应用 ${decodeURIComponent(scaleTypeMatch[1])} 缩放`);
-                        }
-                    }
-                    break;
-                    
-                // 添加对分块数据传输的支持
-                case 'prepareForChunkedData':
-                    log(`准备接收分块数据: 总块数=${message.metadata.totalChunks}, 总长度=${message.metadata.totalLength}`);
-                    prepareForChunkedData(message.metadata);
-                    break;
-                    
-                case 'imageDataChunk':
-                    log(`收到数据块 #${message.chunkIndex}, 偏移量=${message.offset}, 长度=${message.chunk.length}`);
-                    processImageDataChunk(message.chunkIndex, message.chunk, message.offset);
-                    break;
-                    
-                case 'imageDataComplete':
-                    log('所有数据块接收完成，开始渲染图像');
-                    finalizeChunkedData();
-                    break;
-                    
-                case 'setImageData':
-                    if (message.rawData) {
-                        log(`收到图像数据: ${message.rawData.width}x${message.rawData.height}, 数据长度: ${message.rawData.data.length}`);
-                        
-                        // 检查数据大小，如果过大则显示警告
-                        if (message.rawData.data.length > 5000000) {
-                            log(`警告：图像数据非常大 (${message.rawData.data.length} 像素)，渲染可能会变慢`);
-                        }
-                        
-                        // 保存当前的缩放和平移状态
-                        const prevZoomLevel = currentImageData ? zoomLevel : null;
-                        const prevPanOffsetX = currentImageData ? panOffsetX : null;
-                        const prevPanOffsetY = currentImageData ? panOffsetY : null;
-                        const prevWidth = currentImageData ? currentImageData.width : null;
-                        const prevHeight = currentImageData ? currentImageData.height : null;
-                        
-                        // 处理原始像素数据，传递之前的状态
-                        renderImageData(message.rawData, prevZoomLevel, prevPanOffsetX, prevPanOffsetY, prevWidth, prevHeight);
-                        
-                        // 如果有缩放类型信息，显示临时消息
-                        if (message.rawData.scaleType) {
-                            showTemporaryMessage(`已应用 ${message.rawData.scaleType} 缩放`);
-                        }
-                    } else {
-                        // 显示错误信息
-                        log('收到错误信息');
-                        canvas.style.display = 'none';
-                        const imagePlaceholder = document.getElementById('image-placeholder');
-                        imagePlaceholder.style.display = 'block';
-                        
-                        if (message.message) {
-                            imagePlaceholder.textContent = message.message;
-                            log(`错误信息: ${message.message}`);
-                        } else {
-                            imagePlaceholder.textContent = '无法显示图像数据';
-                            log('无法显示图像数据');
-                        }
-                    }
-                    break;
-                    
-                case 'setFrameInfo':
-                    document.getElementById('frame-value').textContent = message.frameInfo || '-';
-                    break;
-                    
-                case 'showHeaderInfo':
-                    // 显示头文件信息
-                    const headerInfo = message.headerInfo;
-                    document.getElementById('header-info').textContent = headerInfo;
-                    break;
-                    
-                case 'setHDUCount':
-                    updateHDUSelector(message.count);
-                    break;
-                    
-                case 'showSpectrum':
-                    log('收到显示光谱的命令');
-                    // 隐藏图像Canvas，显示光谱Canvas
-                    document.getElementById('fits-canvas').style.display = 'none';
-                    document.getElementById('spectrum-canvas').style.display = 'block';
-                    document.getElementById('image-placeholder').style.display = 'none';
-                    
-                    // 清空WCS信息
-                    document.getElementById('wcs-value-1').textContent = '-';
-                    document.getElementById('wcs-value-2').textContent = '-';
-                    
-                    // 隐藏图像缩放按钮，显示光谱列选择器
-                    document.getElementById('image-scale-buttons').style.display = 'none';
-                    document.getElementById('spectrum-column-selectors').style.display = 'flex';
-                    
-                    log('Canvas显示状态已切换');
-                    log(`收到的光谱数据: 波长点数=${message.data.wavelength.length}, 流量点数=${message.data.flux.length}`);
-                    log(`单位信息: 波长=${message.data.wavelengthUnit}, 流量=${message.data.fluxUnit}`);
-                    
-                    // 保存光谱数据
-                    currentSpectrumData = message.data;
-                    
-                    // 如果有可用列信息，填充列选择器
-                    if (message.columns && message.columns.length > 0) {
-                        availableColumns = message.columns;
-                        updateColumnSelectors(message.columns, message.wavelengthColumn, message.fluxColumn);
-                    }
-                    
-                    // 重置缩放和平移状态
-                    spectrumZoomLevel = 1.0;
-                    spectrumPanOffsetX = 0;
-                    spectrumPanOffsetY = 0;
-                    
-                    // 渲染光谱数据
-                    renderSpectrum(message.data);
-                    
-                    // 显示缩放和平移提示
-                    showTemporaryMessage('滚轮：缩放 | 左键拖动：平移');
-                    break;
-                    
-                case 'setControlsVisibility':
-                    log(`设置控件可见性: 图像控件=${message.showImageControls}, 光谱控件=${message.showSpectrumControls}`);
-                    
-                    // 设置图像缩放按钮的可见性
-                    document.getElementById('image-scale-buttons').style.display = 
-                        message.showImageControls ? 'flex' : 'none';
-                    
-                    // 设置光谱列选择器的可见性
-                    document.getElementById('spectrum-column-selectors').style.display = 
-                        message.showSpectrumControls ? 'flex' : 'none';
-                    break;
-            }
-        });
-
-        // 分块数据处理相关变量
-        let chunkedDataMetadata = null;
-        let chunkedDataBuffer = null;
-        let receivedChunks = 0;
-        
-        // 准备接收分块数据
-        function prepareForChunkedData(metadata) {
-            chunkedDataMetadata = metadata;
-            chunkedDataBuffer = new Float32Array(metadata.totalLength);
-            receivedChunks = 0;
-            
-            // 显示加载进度
-            document.getElementById('image-placeholder').textContent = `正在接收图像数据 (0/${metadata.totalChunks})...`;
-            document.getElementById('image-placeholder').style.display = 'block';
-            canvas.style.display = 'none';
-        }
-        
-        // 处理接收到的数据块
-        function processImageDataChunk(chunkIndex, chunkData, offset) {
-            // 将数据块复制到缓冲区
-            for (let i = 0; i < chunkData.length; i++) {
-                chunkedDataBuffer[offset + i] = chunkData[i];
-            }
-            
-            receivedChunks++;
-            
-            // 更新加载进度
-            document.getElementById('image-placeholder').textContent = 
-                `正在接收图像数据 (${receivedChunks}/${chunkedDataMetadata.totalChunks})...`;
-        }
-        
-        // 完成分块数据接收并渲染图像
-        function finalizeChunkedData() {
-            if (!chunkedDataMetadata || !chunkedDataBuffer) {
-                log('错误：没有接收到完整的分块数据');
-                return;
-            }
-            
-            log('所有数据块接收完成，准备渲染图像');
-            
-            // 保存当前的缩放和平移状态
-            const prevZoomLevel = currentImageData ? zoomLevel : null;
-            const prevPanOffsetX = currentImageData ? panOffsetX : null;
-            const prevPanOffsetY = currentImageData ? panOffsetY : null;
-            const prevWidth = currentImageData ? currentImageData.width : null;
-            const prevHeight = currentImageData ? currentImageData.height : null;
-            
-            // 创建完整的数据对象
-            const rawData = {
-                data: chunkedDataBuffer,
-                width: chunkedDataMetadata.width,
-                height: chunkedDataMetadata.height,
-                min: chunkedDataMetadata.min,
-                max: chunkedDataMetadata.max
-            };
-            
-            // 渲染图像，传递之前的状态
-            renderImageData(rawData, prevZoomLevel, prevPanOffsetX, prevPanOffsetY, prevWidth, prevHeight);
-            
-            // 清理缓存
-            chunkedDataMetadata = null;
-            chunkedDataBuffer = null;
-            receivedChunks = 0;
-        }
-
-        // 从二进制文件加载图像数据
-        async function loadImageDataFromFile(fileUri, prevZoomLevel, prevPanOffsetX, prevPanOffsetY, prevWidth, prevHeight) {
-            try {
-                log(`开始从文件加载图像数据: ${fileUri}`);
-                document.getElementById('image-placeholder').textContent = '正在从文件加载图像数据...';
-                
-                // 获取二进制数据
-                const response = await fetch(fileUri);
-                if (!response.ok) {
-                    throw new Error(`HTTP错误: ${response.status}`);
-                }
-                
-                const arrayBuffer = await response.arrayBuffer();
-                log(`已获取二进制数据，大小: ${arrayBuffer.byteLength} 字节`);
-                
-                // 读取头部长度
-                const headerLengthView = new DataView(arrayBuffer, 0, 4);
-                const headerLength = headerLengthView.getUint32(0, true); // 小端字节序
-                
-                // 读取元数据
-                const metadataBytes = new Uint8Array(arrayBuffer, 4, headerLength);
-                const metadataJson = new TextDecoder().decode(metadataBytes);
-                const metadata = JSON.parse(metadataJson);
-                log(`已解析元数据: ${JSON.stringify(metadata)}`);
-                
-                // 读取图像数据
-                const dataStart = 4 + headerLength;
-                const dataBuffer = arrayBuffer.slice(dataStart);
-                const imageData = new Float32Array(dataBuffer);
-                
-                log(`已获取图像数据，长度: ${imageData.length}`);
-                
-                // 创建完整的数据对象 - 直接使用 TypedArray 而不是转换为普通数组
-                const rawData = {
-                    data: imageData,
-                    width: metadata.width,
-                    height: metadata.height,
-                    min: metadata.min,
-                    max: metadata.max
-                };
-                
-                // 如果有深度信息，添加到数据对象
-                if (metadata.depth) {
-                    rawData.depth = metadata.depth;
-                    log(`检测到多维数据，深度: ${metadata.depth}`);
-                }
-                
-                // 渲染图像，传递之前的状态
-                renderImageData(rawData, prevZoomLevel, prevPanOffsetX, prevPanOffsetY, prevWidth, prevHeight);
-                
-            } catch (error) {
-                log(`加载图像数据文件时出错: ${error.message}`);
-                document.getElementById('image-placeholder').textContent = `加载图像数据文件时出错: ${error.message}`;
-                canvas.style.display = 'none';
-                document.getElementById('image-placeholder').style.display = 'block';
-            }
-        }
-
-        // 渲染图像数据到Canvas
-        function renderImageData(rawData, prevZoomLevel, prevPanOffsetX, prevPanOffsetY, prevWidth, prevHeight) {
-            log(`开始渲染图像数据: ${rawData.width}x${rawData.height}`);
-            
-            if (!rawData || !rawData.data || !rawData.width || !rawData.height) {
-                log('图像数据无效');
-                return;
-            }
-            
-            // 检查是否是多维数据
-            const isMultiDimensional = rawData.depth && rawData.depth > 1;
-            
-            // 如果是多维数据，保存原始数据并显示通道选择器
-            if (isMultiDimensional) {
-                log(`检测到多维数据: ${rawData.width}x${rawData.height}x${rawData.depth}`);
-                
-                // 保存原始多维数据
-                originalImageData = {
-                    data3D: rawData.data,
-                    width: rawData.width,
-                    height: rawData.height,
-                    depth: rawData.depth,
-                    min: rawData.min,
-                    max: rawData.max
-                };
-                
-                // 显示通道选择器
-                document.getElementById('channel-selector-container').style.display = 'block';
-                
-                // 确保轴顺序选择器的值与currentAxesOrder一致
-                if (axesOrderSelector.value !== currentAxesOrder.join(',')) {
-                    log(`轴顺序不一致，选择器值: ${axesOrderSelector.value}, 当前值: ${currentAxesOrder.join(',')}`);
-                    axesOrderSelector.value = currentAxesOrder.join(',');
-                }
-                
-                // 重置通道滑块
-                resetChannelSlider();
-                
-                // 提取第一个通道的2D切片
-                const slice2D = extract2DSlice(originalImageData, currentChannel, currentAxesOrder);
-                
-                // 更新当前图像数据
-                currentImageData = slice2D;
-            } else {
-                // 隐藏通道选择器
-                document.getElementById('channel-selector-container').style.display = 'none';
-                
-                // 清除原始多维数据
-                originalImageData = null;
-                
-                // 保存当前图像数据
-                currentImageData = rawData;
-            }
-            
-            // 显示Canvas，隐藏占位符
-            canvas.style.display = 'block';
-            document.getElementById('image-placeholder').style.display = 'none';
-            
-            // 确保canvas大小与容器大小一致
-            const container = imageContainer;
-            const containerWidth = container.clientWidth;
-            const containerHeight = container.clientHeight;
-            
-            // 如果canvas大小与容器大小不一致，则更新canvas大小
-            if (canvas.width !== containerWidth || canvas.height !== containerHeight) {
-                canvas.width = containerWidth;
-                canvas.height = containerHeight;
-                log(`已更新Canvas尺寸为: ${canvas.width}x${canvas.height}`);
-            }
-            
-            // 如果是首次加载或图像尺寸变化，则重置视图
-            if (!prevZoomLevel || !prevWidth || !prevHeight || 
-                prevWidth !== currentImageData.width || prevHeight !== currentImageData.height) {
-                // 重置缩放和平移
-                zoomLevel = 1.0;
-                panOffsetX = 0;
-                panOffsetY = 0;
-                
-                // 计算初始缩放级别，使图像适应容器
-                // 确保图像至少填充容器的80%，但不超过容器大小
-                const scaleX = containerWidth / currentImageData.width;
-                const scaleY = containerHeight / currentImageData.height;
-                zoomLevel = Math.min(scaleX, scaleY) * 0.95; // 稍微缩小一点，留出边距
-                
-                // 确保缩放级别不会太小
-                zoomLevel = Math.max(zoomLevel, 0.1);
-                
-                // 居中图像
-                panOffsetX = (containerWidth - currentImageData.width * zoomLevel) / 2;
-                panOffsetY = (containerHeight - currentImageData.height * zoomLevel) / 2;
-                
-                log(`已重置视图，缩放级别: ${zoomLevel.toFixed(2)}`);
-            } else {
-                // 保持之前的缩放和平移状态
-                zoomLevel = prevZoomLevel;
-                
-                // 无论容器大小是否变化，都保持之前的平移偏移
-                // 这样可以确保应用非线性变换后图像位置不变
-                panOffsetX = prevPanOffsetX;
-                panOffsetY = prevPanOffsetY;
-                
-                log(`已保持之前的视图状态，缩放级别: ${zoomLevel.toFixed(2)}`);
-            }
-            
-            // 更新缩放指示器文本（但保持隐藏状态）
-            zoomIndicator.textContent = `缩放: ${Math.round(zoomLevel * 100)}%`;
-            
-            // 使用变换渲染图像
-            renderWithTransform();
-            
-            // 渲染预览图
-            renderPreview();
-            
-            log('已完成图像渲染');
-        }
-
-        // 显示临时消息（1秒后自动消失）
-        function showTemporaryMessage(message) {
-            // 不显示临时消息，只记录到控制台
-            log(`临时消息: ${message}`);
-        }
-
-        // 通知扩展webview已准备好
-        log('发送webviewReady消息');
-        vscode.postMessage({
-            command: 'webviewReady'
-        });
-
-        // HDU切换相关变量和函数
-        let currentHDUIndex = 0;
-        let totalHDUs = 1;
-
-        // 更新HDU选择器选项
-        function updateHDUSelector(hduCount) {
-            const selector = document.getElementById('hdu-selector');
-            selector.innerHTML = ''; // 清空现有选项
-            
-            for (let i = 0; i < hduCount; i++) {
-                const option = document.createElement('option');
-                option.value = i;
-                option.textContent = i === 0 ? 'Primary HDU' : `Extension HDU ${i}`;
-                selector.appendChild(option);
-            }
-            
-            totalHDUs = hduCount;
-        }
-
-        // 监听HDU选择器变化
-        document.getElementById('hdu-selector').addEventListener('change', (event) => {
-            const newHDUIndex = parseInt(event.target.value);
-            if (newHDUIndex !== currentHDUIndex) {
-                currentHDUIndex = newHDUIndex;
-                vscode.postMessage({
-                    command: 'switchHDU',
-                    hduIndex: newHDUIndex
-                });
-            }
-        });
-
-        // 创建ResizeObserver监听容器大小变化
-        const resizeObserver = new ResizeObserver(entries => {
-            for (const entry of entries) {
-                if (entry.target === imageContainer) {
-                    // 检查容器大小是否真的变化了
-                    const newWidth = entry.contentRect.width;
-                    const newHeight = entry.contentRect.height;
-                    
-                    // 如果当前有图像数据，重新渲染
-                    if (currentImageData) {
-                        log(`容器大小变化: ${newWidth}x${newHeight}，重新渲染图像`);
-                        
-                        // 保存当前的缩放和平移状态
-                        const prevZoomLevel = zoomLevel;
-                        const prevPanOffsetX = panOffsetX;
-                        const prevPanOffsetY = panOffsetY;
-                        const prevWidth = canvas.width;
-                        const prevHeight = canvas.height;
-                        
-                        // 更新canvas大小
-                        canvas.width = newWidth;
-                        canvas.height = newHeight;
-                        
-                        // 如果用户没有手动缩放（即当前缩放是自动计算的），则更新缩放级别
-                        const autoZoomLevel = Math.min(prevWidth / currentImageData.width, prevHeight / currentImageData.height) * 0.95;
-                        if (Math.abs(prevZoomLevel - autoZoomLevel) < 0.01) {
-                            // 用户没有手动缩放，重新计算缩放级别
-                            const scaleX = newWidth / currentImageData.width;
-                            const scaleY = newHeight / currentImageData.height;
-                            zoomLevel = Math.min(scaleX, scaleY) * 0.95;
-                            zoomLevel = Math.max(zoomLevel, 0.1); // 确保缩放级别不会太小
-                            
-                            // 居中图像
-                            panOffsetX = (newWidth - currentImageData.width * zoomLevel) / 2;
-                            panOffsetY = (newHeight - currentImageData.height * zoomLevel) / 2;
-                        } else {
-                            // 用户已手动缩放，保持相对位置
-                            // 只调整偏移量以保持图像相对于视口中心的位置
-                            panOffsetX = prevPanOffsetX + (newWidth - prevWidth) / 2;
-                            panOffsetY = prevPanOffsetY + (newHeight - prevHeight) / 2;
-                        }
-                        
-                        // 更新缩放指示器文本（但保持隐藏状态）
-                        zoomIndicator.textContent = `缩放: ${Math.round(zoomLevel * 100)}%`;
-                        
-                        // 重新渲染图像
-                        renderWithTransform();
-                        
-                        // 更新预览图
-                        renderPreview();
-                    }
-                    
-                    // 如果当前有光谱数据，重新渲染
-                    const spectrumCanvas = document.getElementById('spectrum-canvas');
-                    if (spectrumCanvas.style.display !== 'none' && spectrumCanvas.dataset.spectrumData) {
-                        log(`容器大小变化: ${newWidth}x${newHeight}，重新渲染光谱`);
-                        
-                        // 更新canvas大小
-                        spectrumCanvas.width = newWidth;
-                        spectrumCanvas.height = newHeight;
-                        
-                        // 重新渲染光谱
-                        try {
-                            const spectrumData = JSON.parse(spectrumCanvas.dataset.spectrumData);
-                            renderSpectrum(spectrumData, true);
-                        } catch (error) {
-                            log(`解析光谱数据时出错: ${error.message}`);
-                        }
-                    }
-                }
-            }
-        });
-        
-        // 开始观察容器大小变化
-        resizeObserver.observe(imageContainer);
-
-        // 处理顶部区域折叠/展开功能
-        const topContainer = document.getElementById('top-container');
-        const collapseButton = document.getElementById('collapse-button');
-        
-        collapseButton.addEventListener('click', () => {
-            topContainer.classList.toggle('collapsed');
-            
-            // 更新按钮图标
-            if (topContainer.classList.contains('collapsed')) {
-                collapseButton.textContent = '▼'; // 向下箭头表示可以展开
-                collapseButton.title = '展开面板';
-            } else {
-                collapseButton.textContent = '▲'; // 向上箭头表示可以折叠
-                collapseButton.title = '折叠面板';
-            }
-            
-            // 触发窗口大小变化事件，以便重新渲染图像
-            if (currentImageData) {
-                // 保存当前的缩放和平移状态
-                const prevZoomLevel = zoomLevel;
-                const prevPanOffsetX = panOffsetX;
-                const prevPanOffsetY = panOffsetY;
-                const prevWidth = canvas.width;
-                const prevHeight = canvas.height;
-                
-                // 更新canvas大小
-                canvas.width = imageContainer.clientWidth;
-                canvas.height = imageContainer.clientHeight;
-                
-                // 如果用户没有手动缩放（即当前缩放是自动计算的），则更新缩放级别
-                const autoZoomLevel = Math.min(prevWidth / currentImageData.width, prevHeight / currentImageData.height) * 0.95;
-                if (Math.abs(prevZoomLevel - autoZoomLevel) < 0.01) {
-                    // 用户没有手动缩放，重新计算缩放级别
-                    const scaleX = canvas.width / currentImageData.width;
-                    const scaleY = canvas.height / currentImageData.height;
-                    zoomLevel = Math.min(scaleX, scaleY) * 0.95;
-                    zoomLevel = Math.max(zoomLevel, 0.1); // 确保缩放级别不会太小
-                    
-                    // 居中图像
-                    panOffsetX = (canvas.width - currentImageData.width * zoomLevel) / 2;
-                    panOffsetY = (canvas.height - currentImageData.height * zoomLevel) / 2;
-                } else {
-                    // 用户已手动缩放，保持相对位置
-                    // 只调整偏移量以保持图像相对于视口中心的位置
-                    panOffsetX = prevPanOffsetX + (canvas.width - prevWidth) / 2;
-                    panOffsetY = prevPanOffsetY + (canvas.height - prevHeight) / 2;
-                }
-                
-                // 更新缩放指示器文本（但保持隐藏状态）
-                zoomIndicator.textContent = `缩放: ${Math.round(zoomLevel * 100)}%`;
-                
-                // 重新渲染图像
-                renderWithTransform();
-                
-                // 更新预览图
-                renderPreview();
-            }
-            
-            // 如果当前有光谱数据，重新渲染
-            const spectrumCanvas = document.getElementById('spectrum-canvas');
-            if (spectrumCanvas.style.display !== 'none' && spectrumCanvas.dataset.spectrumData) {
-                // 更新canvas大小
-                spectrumCanvas.width = imageContainer.clientWidth;
-                spectrumCanvas.height = imageContainer.clientHeight;
-                
-                // 重新渲染光谱
-                try {
-                    const spectrumData = JSON.parse(spectrumCanvas.dataset.spectrumData);
-                    renderSpectrum(spectrumData, true);
-                } catch (error) {
-                    log(`解析光谱数据时出错: ${error.message}`);
-                }
-            }
-        });
-
-        // 处理光谱数据显示
-        function renderSpectrum(data, update = false) {
-            log('开始渲染光谱');
-            const canvas = document.getElementById('spectrum-canvas');
-            const ctx = canvas.getContext('2d');
-            
-            if (!ctx) {
-                console.error('无法获取光谱Canvas上下文');
-                return;
-            }
-
-            // 数据验证
-            if (!data || !data.wavelength || !data.flux || 
-                !Array.isArray(data.wavelength) || !Array.isArray(data.flux) || 
-                data.wavelength.length === 0 || data.flux.length === 0) {
-                console.error('无效的光谱数据');
-                console.log('收到的数据:', data);
-                return;
-            }
-
-            if (data.wavelength.length !== data.flux.length) {
-                console.error(`数据长度不匹配：flux=${data.flux.length}, wavelength=${data.wavelength.length}`);
-                return;
-            }
-
-            // 保存光谱数据到Canvas的dataset属性，以便鼠标移动事件使用
-            canvas.dataset.spectrumData = JSON.stringify(data);
-            
-            // 确保canvas大小与容器大小一致
-            const spectrumContainer = document.querySelector('.image-container');
-            const containerWidth = spectrumContainer.clientWidth;
-            const containerHeight = spectrumContainer.clientHeight;
-            
-            // 如果canvas大小与容器大小不一致，则更新canvas大小
-            if (canvas.width !== containerWidth || canvas.height !== containerHeight) {
-                canvas.width = containerWidth;
-                canvas.height = containerHeight;
-                log(`已更新光谱Canvas尺寸为: ${canvas.width}x${canvas.height}`);
-            }
-            
-            // 如果是更新模式，不需要重置缩放和平移状态
-            if (!update) {
-                log(`开始渲染光谱数据，数据点数量：${data.wavelength.length}`);
-                
-                // 重置缩放和平移状态
-                spectrumZoomLevel = 1.0;
-                spectrumPanOffsetX = 0;
-                spectrumPanOffsetY = 0;
-                
-                // 初始化预览图
-                updateSpectrumPreview(data);
-                
-                // 显示缩放和平移提示
-                showTemporaryMessage('滚轮：缩放 | 左键拖动：平移');
-            } else {
-                // 更新预览图视口
-                updateSpectrumPreviewViewport();
-            }
-            
-            // 清空画布
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            // 计算数据范围
-            let minY = Infinity;
-            let maxY = -Infinity;
-            let minX = Infinity;
-            let maxX = -Infinity;
-
-            // 过滤无效值并计算范围
-            const validData = [];
-            for (let i = 0; i < data.wavelength.length; i++) {
-                if (!isNaN(data.flux[i]) && !isNaN(data.wavelength[i]) && 
-                    isFinite(data.flux[i]) && isFinite(data.wavelength[i])) {
-                    validData.push({x: data.wavelength[i], y: data.flux[i]});
-                    minY = Math.min(minY, data.flux[i]);
-                    maxY = Math.max(maxY, data.flux[i]);
-                    minX = Math.min(minX, data.wavelength[i]);
-                    maxX = Math.max(maxX, data.wavelength[i]);
-                }
-            }
-
-            if (validData.length === 0) {
-                log('错误：没有有效的数据点');
-                return;
-            }
-
-            log(`有效数据点：${validData.length}，X范围：[${minX}, ${maxX}]，Y范围：[${minY}, ${maxY}]`);
-            
-            // 设置边距 - 这些边距是固定的，不受缩放影响
-            const margin = { top: 40, right: 40, bottom: 60, left: 70 };
-            const plotWidth = canvas.width - margin.left - margin.right;
-            const plotHeight = canvas.height - margin.top - margin.bottom;
-            
-            log(`绘图区域尺寸：${plotWidth}x${plotHeight}`);
-            
-            // 添加一些padding到数据范围
-            const rangeY = maxY - minY;
-            const rangeX = maxX - minX;
-            minY -= rangeY * 0.05;
-            maxY += rangeY * 0.05;
-            minX -= rangeX * 0.02;
-            maxX += rangeX * 0.02;
-            
-            // 绘制背景和坐标轴 - 这部分不受缩放和平移影响
-            drawBackground(ctx, canvas, margin);
-            
-            // 计算数据到屏幕的映射比例
-            const scaleX = plotWidth / (maxX - minX);
-            const scaleY = plotHeight / (maxY - minY);
-            
-            // 计算可见数据范围
-            const visibleMinX = minX + spectrumPanOffsetX / (scaleX * spectrumZoomLevel);
-            const visibleMaxX = visibleMinX + (plotWidth / scaleX) / spectrumZoomLevel;
-            
-            const visibleMinY = minY;
-            const visibleMaxY = maxY;
-            
-            // 绘制坐标轴刻度和网格线 - 使用可见数据范围
-            drawAxesAndGrid(ctx, canvas, margin, minX, maxX, minY, maxY, visibleMinX, visibleMaxX, visibleMinY, visibleMaxY, data);
-            
-            // 绘制光谱线
-            drawSpectrumLine(ctx, canvas, margin, validData, minX, maxX, minY, maxY, spectrumZoomLevel, spectrumPanOffsetX, spectrumPanOffsetY);
-            
-            // 显示当前缩放级别
-            showZoomLevel(ctx, margin, spectrumZoomLevel);
-
-            log('光谱数据渲染完成');
-        }
-        
-        // 绘制背景
-        function drawBackground(ctx, canvas, margin) {
-            const plotWidth = canvas.width - margin.left - margin.right;
-            const plotHeight = canvas.height - margin.top - margin.bottom;
-            
-            // 绘制整个画布背景 - 使用纯黑色背景
-            ctx.fillStyle = '#000000';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            // 绘制绘图区域背景 - 使用深灰色背景
-            ctx.fillStyle = '#1e1e1e';
-            ctx.fillRect(margin.left, margin.top, plotWidth, plotHeight);
-            
-            // 绘制边框
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(margin.left, margin.top, plotWidth, plotHeight);
-        }
-        
-        // 绘制坐标轴刻度和网格线
-        function drawAxesAndGrid(ctx, canvas, margin, minX, maxX, minY, maxY, visibleMinX, visibleMaxX, visibleMinY, visibleMaxY, data) {
-            const plotWidth = canvas.width - margin.left - margin.right;
-            const plotHeight = canvas.height - margin.top - margin.bottom;
-            
-            // 绘制X轴网格线和刻度
-            const xTicks = 8; // 减少刻度数量，避免堆叠
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'top';
-            ctx.font = '12px Arial';
-            
-            // 计算合适的刻度间隔 - 使用可见数据范围
-            const xRange = visibleMaxX - visibleMinX;
-            const xStep = calculateNiceStep(xRange / xTicks);
-            const xStart = Math.ceil(visibleMinX / xStep) * xStep;
-            
-            // 存储已绘制的刻度位置，避免重叠
-            const drawnXPositions = [];
-            const minXDistance = 60; // 最小刻度间距（像素）
-            
-            for (let x = xStart; x <= visibleMaxX; x += xStep) {
-                // 计算屏幕坐标 - 使用可见数据范围进行映射
-                const screenX = margin.left + ((x - visibleMinX) / (visibleMaxX - visibleMinX)) * plotWidth;
-                
-                // 检查是否与已绘制的刻度太近
-                let tooClose = false;
-                for (const pos of drawnXPositions) {
-                    if (Math.abs(screenX - pos) < minXDistance) {
-                        tooClose = true;
-                        break;
-                    }
-                }
-                
-                // 如果在可见区域内且不会导致刻度重叠
-                if (screenX >= margin.left && screenX <= canvas.width - margin.right && !tooClose) {
-                    // 绘制网格线
-                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-                    ctx.beginPath();
-                    ctx.moveTo(screenX, margin.top);
-                    ctx.lineTo(screenX, canvas.height - margin.bottom);
-                    ctx.stroke();
-                    
-                    // 绘制刻度
-                    ctx.fillStyle = 'white';
-                    ctx.fillText(x.toFixed(1), screenX, canvas.height - margin.bottom + 10);
-                    
-                    // 记录已绘制的位置
-                    drawnXPositions.push(screenX);
-                }
-            }
-            
-            // 绘制Y轴网格线和刻度
-            const yTicks = 8; // 减少刻度数量，避免堆叠
-            ctx.textAlign = 'right';
-            ctx.textBaseline = 'middle';
-            
-            // 计算合适的刻度间隔 - 使用可见数据范围
-            const yRange = visibleMaxY - visibleMinY;
-            const yStep = calculateNiceStep(yRange / yTicks);
-            const yStart = Math.ceil(visibleMinY / yStep) * yStep;
-            
-            // 存储已绘制的刻度位置，避免重叠
-            const drawnYPositions = [];
-            const minYDistance = 30; // 最小刻度间距（像素）
-            
-            for (let y = yStart; y <= visibleMaxY; y += yStep) {
-                // 计算屏幕坐标 - 使用全局数据范围进行映射
-                const screenY = canvas.height - margin.bottom - ((y - minY) / (maxY - minY)) * plotHeight;
-                
-                // 检查是否与已绘制的刻度太近
-                let tooClose = false;
-                for (const pos of drawnYPositions) {
-                    if (Math.abs(screenY - pos) < minYDistance) {
-                        tooClose = true;
-                        break;
-                    }
-                }
-                
-                // 如果在可见区域内且不会导致刻度重叠
-                if (screenY >= margin.top && screenY <= canvas.height - margin.bottom && !tooClose) {
-                    // 绘制网格线
-                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-                    ctx.beginPath();
-                    ctx.moveTo(margin.left, screenY);
-                    ctx.lineTo(canvas.width - margin.right, screenY);
-                    ctx.stroke();
-                    
-                    // 绘制刻度
-                    ctx.fillStyle = 'white';
-                    // 使用科学计数法显示大数值
-                    const formattedValue = Math.abs(y) > 1000 || Math.abs(y) < 0.01 ? y.toExponential(1) : y.toFixed(1);
-                    ctx.fillText(formattedValue, margin.left - 10, screenY);
-                    
-                    // 记录已绘制的位置
-                    drawnYPositions.push(screenY);
-                }
-            }
-            
-            // 绘制坐标轴标签
-            ctx.font = '14px Arial';
-            ctx.fillStyle = 'white';
-            ctx.textAlign = 'center';
-            ctx.fillText(`Wavelength (${data.wavelengthUnit || 'Å'})`, canvas.width / 2, canvas.height - margin.bottom / 3);
-            
-            ctx.save();
-            ctx.translate(margin.left / 3, canvas.height / 2);
-            ctx.rotate(-Math.PI / 2);
-            ctx.fillText(`Flux (${data.fluxUnit || 'Counts'})`, 0, 0);
-            ctx.restore();
-        }
-        
-        // 绘制光谱线
-        function drawSpectrumLine(ctx, canvas, margin, validData, minX, maxX, minY, maxY, zoomLevel, panOffsetX, panOffsetY) {
-            const plotWidth = canvas.width - margin.left - margin.right;
-            const plotHeight = canvas.height - margin.top - margin.bottom;
-            
-            // 保存当前上下文状态
-            ctx.save();
-            
-            // 创建裁剪区域，确保绘制不超出绘图区域
-            ctx.beginPath();
-            ctx.rect(margin.left, margin.top, plotWidth, plotHeight);
-            ctx.clip();
-            
-            // 计算数据到屏幕的映射比例
-            const scaleX = plotWidth / (maxX - minX);
-            const scaleY = plotHeight / (maxY - minY);
-            
-            // 计算可见数据范围
-            const visibleMinX = minX + panOffsetX / (scaleX * zoomLevel);
-            const visibleMaxX = visibleMinX + (plotWidth / scaleX) / zoomLevel;
-            
-            // 确定可见数据范围内的点
-            let visiblePoints = [];
-            for (let i = 0; i < validData.length; i++) {
-                const point = validData[i];
-                if (point.x >= visibleMinX - (visibleMaxX - visibleMinX) * 0.1 && 
-                    point.x <= visibleMaxX + (visibleMaxX - visibleMinX) * 0.1) {
-                    visiblePoints.push(point);
-                }
-            }
-            
-            // 如果没有可见点，直接返回
-            if (visiblePoints.length === 0) {
-                ctx.restore();
-                return;
-            }
-            
-            // 确保点是按X坐标排序的
-            visiblePoints.sort((a, b) => a.x - b.x);
-            
-            // 如果可见点太多，进行自适应采样
-            let sampledPoints = visiblePoints;
-            const maxVisiblePoints = Math.min(10000, Math.max(1000, Math.floor(plotWidth * 2))); // 根据屏幕宽度调整采样点数
-            
-            if (visiblePoints.length > maxVisiblePoints) {
-                const step = Math.ceil(visiblePoints.length / maxVisiblePoints);
-                sampledPoints = [];
-                
-                for (let i = 0; i < visiblePoints.length; i += step) {
-                    sampledPoints.push(visiblePoints[i]);
-                }
-                
-                // 确保包含最后一个点
-                if (visiblePoints.length > 0 && 
-                    (visiblePoints.length - 1) % step !== 0 && 
-                    sampledPoints[sampledPoints.length - 1] !== visiblePoints[visiblePoints.length - 1]) {
-                    sampledPoints.push(visiblePoints[visiblePoints.length - 1]);
-                }
-            }
-            
-            // 绘制光谱线
-            ctx.beginPath();
-            ctx.strokeStyle = '#4a9eff';
-            ctx.lineWidth = 1.5;
-            
-            for (let i = 0; i < sampledPoints.length; i++) {
-                const point = sampledPoints[i];
-                
-                // 计算屏幕坐标 - 应用缩放和平移
-                const x = margin.left + ((point.x - visibleMinX) * scaleX * zoomLevel);
-                const y = margin.top + plotHeight - ((point.y - minY) / (maxY - minY)) * plotHeight;
-                
-                if (i === 0) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, y);
-                }
-            }
-            
-            ctx.stroke();
-            
-            // 恢复上下文状态
-            ctx.restore();
-        }
-        
-        // 显示当前缩放级别
-        function showZoomLevel(ctx, margin, zoomLevel) {
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-            ctx.font = '12px Arial';
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'top';
-            ctx.fillText(`Zoom: ${(zoomLevel * 100).toFixed(0)}%`, margin.left + 10, margin.top + 10);
-        }
-
-        // 计算合适的刻度间隔
-        function calculateNiceStep(roughStep) {
-            const exponent = Math.floor(Math.log10(roughStep));
-            const fraction = roughStep / Math.pow(10, exponent);
-            
-            let niceFraction;
-            if (fraction < 1.5) {
-                niceFraction = 1;
-            } else if (fraction < 3) {
-                niceFraction = 2;
-            } else if (fraction < 7) {
-                niceFraction = 5;
-            } else {
-                niceFraction = 10;
-            }
-            
-            return niceFraction * Math.pow(10, exponent);
-        }
-
-        // 显示缩放指示器
-        function showZoomIndicator(zoomLevel) {
-            // 创建或获取缩放指示器元素
-            let zoomIndicatorElement = document.getElementById('spectrum-zoom-indicator');
-            if (!zoomIndicatorElement) {
-                zoomIndicatorElement = document.createElement('div');
-                zoomIndicatorElement.id = 'spectrum-zoom-indicator';
-                zoomIndicatorElement.style.position = 'absolute';
-                zoomIndicatorElement.style.top = '10px';
-                zoomIndicatorElement.style.left = '10px';
-                zoomIndicatorElement.style.backgroundColor = 'var(--vscode-dropdown-background)';
-                zoomIndicatorElement.style.color = 'var(--vscode-dropdown-foreground)';
-                zoomIndicatorElement.style.padding = '5px 10px';
-                zoomIndicatorElement.style.borderRadius = '2px';
-                zoomIndicatorElement.style.fontSize = '12px';
-                zoomIndicatorElement.style.zIndex = '1000';
-                zoomIndicatorElement.style.border = '1px solid var(--vscode-border)';
-                zoomIndicatorElement.style.opacity = '0.8';
-                document.querySelector('.image-container').appendChild(zoomIndicatorElement);
-            }
-            
-            // 设置缩放指示器内容
-            zoomIndicatorElement.textContent = `缩放: ${Math.round(zoomLevel * 100)}%`;
-            zoomIndicatorElement.style.display = 'block';
-            
-            // 3秒后自动隐藏
-            clearTimeout(zoomIndicatorElement.hideTimeout);
-            zoomIndicatorElement.hideTimeout = setTimeout(() => {
-                zoomIndicatorElement.style.display = 'none';
-            }, 3000);
-        }
-
-        // 使用顶部已有的预览图框
-        const spectrumPreviewCanvas = document.getElementById('preview-canvas');
-
-        // 创建预览图视口
-        const spectrumPreviewViewport = document.getElementById('preview-viewport');
-
-        // 更新光谱预览图
-        function updateSpectrumPreview(data) {
-            const canvas = spectrumPreviewCanvas;
-            const ctx = canvas.getContext('2d');
-            
-            // 设置Canvas尺寸为预览图框的尺寸
-            canvas.width = canvas.clientWidth;
-            canvas.height = canvas.clientHeight;
-            
-            // 清空画布
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            // 计算数据范围
-            let minY = Infinity;
-            let maxY = -Infinity;
-            let minX = Infinity;
-            let maxX = -Infinity;
-            
-            // 过滤无效值并计算范围
-            const validData = [];
-            for (let i = 0; i < data.wavelength.length; i++) {
-                if (!isNaN(data.flux[i]) && !isNaN(data.wavelength[i]) && 
-                    isFinite(data.flux[i]) && isFinite(data.wavelength[i])) {
-                    validData.push({x: data.wavelength[i], y: data.flux[i]});
-                    minY = Math.min(minY, data.flux[i]);
-                    maxY = Math.max(maxY, data.flux[i]);
-                    minX = Math.min(minX, data.wavelength[i]);
-                    maxX = Math.max(maxX, data.wavelength[i]);
-                }
-            }
-            
-            if (validData.length === 0) return;
-            
-            // 设置边距
-            const margin = { top: 5, right: 5, bottom: 5, left: 5 };
-            const plotWidth = canvas.width - margin.left - margin.right;
-            const plotHeight = canvas.height - margin.top - margin.bottom;
-            
-            // 添加一些padding到数据范围
-            const rangeY = maxY - minY;
-            const rangeX = maxX - minX;
-            minY -= rangeY * 0.05;
-            maxY += rangeY * 0.05;
-            minX -= rangeX * 0.02;
-            maxX += rangeX * 0.02;
-            
-            // 计算缩放因子
-            const scaleX = plotWidth / (maxX - minX);
-            const scaleY = plotHeight / (maxY - minY);
-            
-            // 绘制背景
-            ctx.fillStyle = 'var(--vscode-panel-background)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            // 绘制边框
-            ctx.strokeStyle = 'var(--vscode-border)';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(0, 0, canvas.width, canvas.height);
-            
-            // 绘制数据
-            ctx.strokeStyle = '#4a9eff';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            
-            validData.forEach((point, i) => {
-                const x = margin.left + (point.x - minX) * scaleX;
-                const y = canvas.height - margin.bottom - (point.y - minY) * scaleY;
-                
-                if (i === 0) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, y);
-                }
-            });
-            
-            ctx.stroke();
-            
-            // 更新预览图视口
-            updateSpectrumPreviewViewport();
-        }
-
-        // 更新光谱预览图视口
-        function updateSpectrumPreviewViewport() {
-            const mainCanvas = document.getElementById('spectrum-canvas');
-            const previewCanvas = document.getElementById('preview-canvas');
-            const viewport = document.getElementById('preview-viewport');
-            
-            if (!mainCanvas || !previewCanvas || !viewport) return;
-            
-            // 获取预览图的位置和尺寸
-            const previewRect = previewCanvas.getBoundingClientRect();
-            
-            // 获取光谱数据
-            const spectrumData = mainCanvas.dataset.spectrumData;
-            if (!spectrumData) return;
-            
-            const data = JSON.parse(spectrumData);
-            if (!data || !data.wavelength || !data.flux) return;
-            
-            // 计算数据范围
-            const minX = Math.min(...data.wavelength);
-            const maxX = Math.max(...data.wavelength);
-            
-            // 设置边距
-            const margin = { top: 40, right: 40, bottom: 60, left: 70 };
-            const plotWidth = mainCanvas.width - margin.left - margin.right;
-            
-            // 计算预览图上的视口位置和尺寸
-            const previewWidth = previewCanvas.width;
-            const previewHeight = previewCanvas.height;
-            
-            // 计算可见数据范围
-            // 当缩放级别为1且无平移时，可见范围是整个数据范围
-            // 随着缩放和平移，可见范围会相应变化
-            
-            // 计算绘图区域中可见的数据范围
-            const visibleDataWidth = (maxX - minX) / spectrumZoomLevel;
-            const visibleDataLeft = minX - (spectrumPanOffsetX / spectrumZoomLevel / plotWidth) * (maxX - minX);
-            const visibleDataRight = visibleDataLeft + visibleDataWidth;
-            
-            // 确保可见范围在数据范围内
-            const clampedDataLeft = Math.max(minX, Math.min(maxX, visibleDataLeft));
-            const clampedDataRight = Math.max(minX, Math.min(maxX, visibleDataRight));
-            
-            // 计算预览图上的视口位置
-            const vpLeft = ((clampedDataLeft - minX) / (maxX - minX)) * previewWidth;
-            const vpWidth = ((clampedDataRight - clampedDataLeft) / (maxX - minX)) * previewWidth;
-            
-            // 设置视口样式 - 只调整水平位置和宽度，垂直方向保持全高
-            viewport.style.left = `${previewRect.left + vpLeft}px`;
-            viewport.style.top = `${previewRect.top}px`;
-            viewport.style.width = `${Math.max(5, vpWidth)}px`; // 确保视口宽度至少为5像素
-            viewport.style.height = `${previewHeight}px`;
-            viewport.style.display = 'block';
-        }
-
-        // 更新HDU选择器
-        function updateHDUSelector(count) {
-            const selector = document.getElementById('hdu-selector');
-            selector.innerHTML = '';
-            
-            for (let i = 0; i < count; i++) {
-                const option = document.createElement('option');
-                option.value = i;
-                option.textContent = `HDU ${i}`;
-                selector.appendChild(option);
-            }
-            
-            // 添加选择事件
-            selector.addEventListener('change', () => {
-                const hduIndex = parseInt(selector.value);
-                log(`切换到HDU ${hduIndex}`);
-                vscode.postMessage({
-                    command: 'switchHDU',
-                    hduIndex: hduIndex
-                });
-            });
-        }
-        
-        // 更新列选择器
-        function updateColumnSelectors(columns, defaultWavelength, defaultFlux) {
-            const wavelengthSelector = document.getElementById('wavelength-column-selector');
-            const fluxSelector = document.getElementById('flux-column-selector');
-            
-            // 清空选择器
-            wavelengthSelector.innerHTML = '<option value="">未选择</option>';
-            fluxSelector.innerHTML = '<option value="">未选择</option>';
-            
-            // 填充选项
-            columns.forEach((column, index) => {
-                const name = column.name || `列 ${index}`;
-                const value = column.name || index.toString();
-                
-                // 添加到波长选择器
-                const wOption = document.createElement('option');
-                wOption.value = value;
-                wOption.textContent = name;
-                wavelengthSelector.appendChild(wOption);
-                
-                // 添加到流量选择器
-                const fOption = document.createElement('option');
-                fOption.value = value;
-                fOption.textContent = name;
-                fluxSelector.appendChild(fOption);
-            });
-            
-            // 设置默认选中项
-            if (defaultWavelength) {
-                wavelengthSelector.value = defaultWavelength;
-                selectedWavelengthColumn = defaultWavelength;
-            }
-            
-            if (defaultFlux) {
-                fluxSelector.value = defaultFlux;
-                selectedFluxColumn = defaultFlux;
-            }
-            
-            // 添加变更事件
-            wavelengthSelector.addEventListener('change', () => {
-                selectedWavelengthColumn = wavelengthSelector.value;
-                updateSpectrumWithSelectedColumns();
-            });
-            
-            fluxSelector.addEventListener('change', () => {
-                selectedFluxColumn = fluxSelector.value;
-                updateSpectrumWithSelectedColumns();
-            });
-        }
-        
-        // 根据选择的列更新光谱
-        function updateSpectrumWithSelectedColumns() {
-            if (!availableColumns.length || !currentSpectrumData) return;
-            
-            log(`更新光谱，选择的波长列: ${selectedWavelengthColumn}, 流量列: ${selectedFluxColumn}`);
-            
-            // 向扩展发送更新光谱的请求
-            vscode.postMessage({
-                command: 'updateSpectrum',
-                wavelengthColumn: selectedWavelengthColumn,
-                fluxColumn: selectedFluxColumn
-            });
-        }
-    </script>
+    
+    <!-- 添加状态栏 -->
+    <div class="status-bar">
+        <div id="status-info">准备就绪</div>
+    </div>
 </body>
 </html> 

@@ -134,6 +134,18 @@ class FitsBuffer {
         return value;
     }
 
+    public readInt64(): number {
+        // JavaScript不能精确表示超过53位的整数
+        // 这里我们读取高32位和低32位，然后组合它们
+        const highBits = this.view.getInt32(this.position, false);
+        const lowBits = this.view.getUint32(this.position + 4, false);
+        this.position += 8;
+        
+        // 组合高32位和低32位
+        // 注意：如果数值超过Number.MAX_SAFE_INTEGER (2^53-1)，可能会丢失精度
+        return highBits * Math.pow(2, 32) + lowBits;
+    }
+
     public readFloat32(): number {
         const value = this.view.getFloat32(this.position, false);
         this.position += 4;
@@ -227,11 +239,17 @@ export class FITSParser {
         
         // 计算头信息块数和数据块数
         const headerSize = this.findHeaderEnd(offset);
+        if (headerSize === 0) {
+            throw new Error('无法找到头部结束标记(END)');
+        }
         const headerBlocks = Math.ceil(headerSize / FITS_BLOCK_SIZE);
-        const headerEnd = headerBlocks * FITS_BLOCK_SIZE;
+        const alignedHeaderSize = headerBlocks * FITS_BLOCK_SIZE;
+        const headerEnd = offset + alignedHeaderSize;
         currentOffset = headerEnd;  // 更新当前位置到头部结束
         
-        console.log(`头信息大小: ${headerSize} 字节, ${headerBlocks} 个块, 结束于 ${headerEnd}`);
+        console.log(`头信息实际大小: ${headerSize} 字节`);
+        console.log(`头信息对齐后大小: ${alignedHeaderSize} 字节 (${headerBlocks} 个块)`);
+        console.log(`数据起始位置: ${headerEnd}`);
         
         // 计算数据块数并调整偏移量
         const dataBlocks = Math.ceil(dataSize / FITS_BLOCK_SIZE);
@@ -298,14 +316,20 @@ export class FITSParser {
                 
                 // 计算扩展头信息大小
                 const extHeaderSize = this.findHeaderEnd(offset);
+                if (extHeaderSize === 0) {
+                    console.log('未找到扩展头部结束标记，停止解析');
+                    break;
+                }
+
+                // 计算头部占用的完整2880字节块数
                 const extHeaderBlocks = Math.ceil(extHeaderSize / FITS_BLOCK_SIZE);
-                const headerSize = extHeaderBlocks * FITS_BLOCK_SIZE;
-                const headerEnd = offset + headerSize;
-                
+                const alignedHeaderSize = extHeaderBlocks * FITS_BLOCK_SIZE;
+                const headerEnd = offset + alignedHeaderSize;  // 扩展数据起始位置
+
                 console.log(`扩展头大小计算详情:`);
                 console.log(`- 实际头部大小（包括END卡片）: ${extHeaderSize} 字节`);
                 console.log(`- 需要的2880字节块数: ${extHeaderBlocks}`);
-                console.log(`- 对齐后的头部大小: ${headerSize} 字节`);
+                console.log(`- 对齐后的头部大小: ${alignedHeaderSize} 字节`);
                 console.log(`- 头部起始位置: ${offset}`);
                 console.log(`- 头部结束位置: ${offset + extHeaderSize}`);
                 console.log(`- 数据起始位置: ${headerEnd}`);
@@ -350,7 +374,7 @@ export class FITSParser {
                     headerStart: offset,      // 扩展HDU头部开始位置
                     dataStart: headerEnd,     // 扩展HDU数据开始位置
                     dataSize: alignedDataSize,// 扩展HDU数据大小（包含填充）
-                    headerSize: headerSize    // 扩展HDU头部大小（包含填充）
+                    headerSize: alignedHeaderSize    // 扩展HDU头部大小（包含填充）
                 });
                 fits.hdus.push(extHDU);
                 
@@ -443,7 +467,7 @@ export class FITSParser {
         if (!this.buffer) return 0;
         
         this.buffer.seek(startOffset);
-        const maxLines = 1000; // 防止无限循环
+        const maxLines = 10000; // 防止无限循环
         let lineCount = 0;
         
         while (lineCount < maxLines) {
@@ -628,6 +652,14 @@ export class FITSParser {
             let ArrayType: any;
             
             switch (dataType) {
+                case 'L':  // Logical
+                    byteSize = 1;
+                    ArrayType = Int8Array;
+                    break;
+                case 'X':  // Bit
+                    byteSize = 1;
+                    ArrayType = Int8Array;
+                    break;
                 case 'B':  // Unsigned byte
                     byteSize = 1;
                     ArrayType = Int8Array;
@@ -640,13 +672,37 @@ export class FITSParser {
                     byteSize = 4;
                     ArrayType = Int32Array;
                     break;
-                case 'E':  // 32-bit floating point
+                case 'K':  // 64-bit integer
+                    byteSize = 8;
+                    ArrayType = Float64Array; // 使用Float64Array存储，因为JavaScript没有Int64Array
+                    break;
+                case 'A':  // Character
+                    byteSize = 1;
+                    ArrayType = Int8Array; // 使用Int8Array存储字符
+                    break;
+                case 'E':  // Single-precision floating point
                     byteSize = 4;
                     ArrayType = Float32Array;
                     break;
-                case 'D':  // 64-bit floating point
+                case 'D':  // Double-precision floating point
                     byteSize = 8;
                     ArrayType = Float64Array;
+                    break;
+                case 'C':  // Single-precision complex
+                    byteSize = 8;
+                    ArrayType = Float32Array; // 使用Float32Array存储，每个复数占用两个元素
+                    break;
+                case 'M':  // Double-precision complex
+                    byteSize = 16;
+                    ArrayType = Float64Array; // 使用Float64Array存储，每个复数占用两个元素
+                    break;
+                case 'P':  // Array Descriptor (32-bit)
+                    byteSize = 8;
+                    ArrayType = Int32Array; // 使用Int32Array存储描述符
+                    break;
+                case 'Q':  // Array Descriptor (64-bit)
+                    byteSize = 16;
+                    ArrayType = Float64Array; // 使用Float64Array存储描述符
                     break;
                 default:
                     console.warn(`不支持的数据类型: ${dataType}`);
@@ -688,12 +744,81 @@ export class FITSParser {
                         try {
                             let value: number;
                             switch (column.dataType) {
-                                case 'D': value = this.buffer.readFloat64(); break;
-                                case 'E': value = this.buffer.readFloat32(); break;
-                                case 'J': value = this.buffer.readInt32(); break;
-                                case 'I': value = this.buffer.readInt16(); break;
-                                case 'B': value = this.buffer.readInt8(); break;
-                                default: value = 0;
+                                case 'L': // Logical
+                                    value = this.buffer.readInt8();
+                                    // 转换为布尔值的数值表示：0(F)=0, 非0(T)=1
+                                    value = value === 0 ? 0 : 1;
+                                    break;
+                                case 'X': // Bit
+                                    // 对于位数据类型，需要特殊处理
+                                    // 在FITS中，位数据是按字节存储的，每个字节包含8个位
+                                    // 我们需要计算当前位在哪个字节，以及在字节中的位置
+                                    const byteIndex = Math.floor(r / 8);
+                                    const bitIndex = r % 8;
+                                    
+                                    // 读取包含该位的字节
+                                    const byteValue = this.buffer.readInt8();
+                                    
+                                    // 提取特定位的值 (从最高有效位开始)
+                                    value = (byteValue & (1 << (7 - bitIndex))) ? 1 : 0;
+                                    
+                                    // 如果不是最后一位，需要回退位置以便下一次读取同一个字节
+                                    if (bitIndex < 7 && r < column.repeatCount - 1) {
+                                        this.buffer.seek(this.buffer.getPosition() - 1);
+                                    }
+                                    break;
+                                case 'B': // Unsigned byte
+                                    value = this.buffer.readInt8();
+                                    // 确保无符号解释
+                                    if (value < 0) value += 256;
+                                    break;
+                                case 'I': // 16-bit integer
+                                    value = this.buffer.readInt16();
+                                    break;
+                                case 'J': // 32-bit integer
+                                    value = this.buffer.readInt32();
+                                    break;
+                                case 'K': // 64-bit integer
+                                    // 使用readInt64方法读取64位整数
+                                    value = this.buffer.readInt64();
+                                    break;
+                                case 'A': // Character
+                                    // 读取一个字符并转换为ASCII码
+                                    const charStr = this.buffer.readString(1);
+                                    value = charStr.length > 0 ? charStr.charCodeAt(0) : 0;
+                                    break;
+                                case 'E': // Single-precision floating point
+                                    value = this.buffer.readFloat32();
+                                    break;
+                                case 'D': // Double-precision floating point
+                                    value = this.buffer.readFloat64();
+                                    break;
+                                case 'C': // Single-precision complex
+                                    // 读取实部和虚部，但只存储实部
+                                    const realC = this.buffer.readFloat32();
+                                    const imagC = this.buffer.readFloat32();
+                                    value = realC; // 只存储实部
+                                    break;
+                                case 'M': // Double-precision complex
+                                    // 读取实部和虚部，但只存储实部
+                                    const realM = this.buffer.readFloat64();
+                                    const imagM = this.buffer.readFloat64();
+                                    value = realM; // 只存储实部
+                                    break;
+                                case 'P': // Array Descriptor (32-bit)
+                                    // 读取两个32位整数，但只存储第一个
+                                    const p1 = this.buffer.readInt32();
+                                    const p2 = this.buffer.readInt32();
+                                    value = p1;
+                                    break;
+                                case 'Q': // Array Descriptor (64-bit)
+                                    // 读取两个64位整数，但只存储第一个
+                                    const q1 = this.buffer.readFloat64();
+                                    const q2 = this.buffer.readFloat64();
+                                    value = q1;
+                                    break;
+                                default:
+                                    value = 0;
                             }
                             
                             if (dataIndex < column.data.length) {
