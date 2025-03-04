@@ -138,28 +138,23 @@ class SpectrumViewer {
         const plotWidth = this.canvas.width - margin.left - margin.right;
         const plotHeight = this.canvas.height - margin.top - margin.bottom;
         
-        // 获取鼠标在Canvas上的位置和中心点位置
+        // 获取鼠标在Canvas上的位置
         const rect = this.canvas.getBoundingClientRect();
         const mouseX = event.clientX - rect.left;
         const mouseY = event.clientY - rect.top;
-        const centerX = margin.left + plotWidth / 2;
-        const centerY = margin.top + plotHeight / 2;
         
-        // 根据按键修饰符决定缩放行为和缩放中心
+        // 根据按键修饰符决定缩放行为
         let newZoomLevelX = this.spectrumZoomLevelX;
         let newZoomLevelY = this.spectrumZoomLevelY;
-        let useMousePosition = true;  // 默认使用鼠标位置作为缩放中心
         
         if (event.shiftKey) {
-            // 仅缩放 Y 轴，使用窗口中心
+            // 仅缩放 Y 轴
             newZoomLevelY = Math.max(0.1, Math.min(50, this.spectrumZoomLevelY * zoomFactor));
-            useMousePosition = false;
         } else if (event.ctrlKey || event.metaKey) {
-            // 仅缩放 X 轴，使用窗口中心
+            // 仅缩放 X 轴
             newZoomLevelX = Math.max(0.1, Math.min(50, this.spectrumZoomLevelX * zoomFactor));
-            useMousePosition = false;
         } else {
-            // 同时缩放两个轴，使用鼠标位置
+            // 同时缩放两个轴
             newZoomLevelX = Math.max(0.1, Math.min(50, this.spectrumZoomLevelX * zoomFactor));
             newZoomLevelY = Math.max(0.1, Math.min(50, this.spectrumZoomLevelY * zoomFactor));
         }
@@ -168,11 +163,23 @@ class SpectrumViewer {
         if (mouseX >= margin.left && mouseX <= (this.canvas.width - margin.right) &&
             mouseY >= margin.top && mouseY <= (this.canvas.height - margin.bottom)) {
             
-            // 获取数据范围
-            const minX = Math.min(...data.wavelength);
-            const maxX = Math.max(...data.wavelength);
-            const minY = Math.min(...data.flux);
-            const maxY = Math.max(...data.flux);
+            // 计算数据范围
+            let minX = data.wavelength[0];
+            let maxX = data.wavelength[0];
+            let minY = data.flux[0];
+            let maxY = data.flux[0];
+            
+            // 使用循环代替展开操作符，提高性能
+            for (let i = 0; i < data.wavelength.length; i++) {
+                const x = data.wavelength[i];
+                const y = data.flux[i];
+                if (!isNaN(x) && !isNaN(y) && isFinite(x) && isFinite(y)) {
+                    minX = x < minX ? x : minX;
+                    maxX = x > maxX ? x : maxX;
+                    minY = y < minY ? y : minY;
+                    maxY = y > maxY ? y : maxY;
+                }
+            }
             
             // 计算数据到屏幕的映射比例
             const scaleX = plotWidth / (maxX - minX);
@@ -182,43 +189,27 @@ class SpectrumViewer {
             const visibleMinX = minX + this.spectrumPanOffsetX / (scaleX * this.spectrumZoomLevelX);
             const visibleMinY = minY + this.spectrumPanOffsetY / (scaleY * this.spectrumZoomLevelY);
             
-            // 根据缩放中心选择计算参考点
-            let refX, refY;
-            if (useMousePosition) {
-                // 使用鼠标位置作为缩放中心
-                refX = visibleMinX + (mouseX - margin.left) / (scaleX * this.spectrumZoomLevelX);
-                refY = visibleMinY + (this.canvas.height - margin.bottom - mouseY) / (scaleY * this.spectrumZoomLevelY);
-            } else {
-                // 使用窗口中心作为缩放中心
-                refX = visibleMinX + (plotWidth / 2) / (scaleX * this.spectrumZoomLevelX);
-                refY = visibleMinY + (plotHeight / 2) / (scaleY * this.spectrumZoomLevelY);
-            }
+            // 计算鼠标位置对应的数据坐标
+            const mouseDataX = visibleMinX + (mouseX - margin.left) / (scaleX * this.spectrumZoomLevelX);
+            const mouseDataY = visibleMinY + (this.canvas.height - margin.bottom - mouseY) / (scaleY * this.spectrumZoomLevelY);
             
             // 更新缩放级别
             this.spectrumZoomLevelX = newZoomLevelX;
             this.spectrumZoomLevelY = newZoomLevelY;
             
-            // 计算新的可见数据范围，保持参考点不变
-            const newScaleX = plotWidth / (maxX - minX);
-            const newScaleY = plotHeight / (maxY - minY);
+            // 计算新的平移偏移，保持鼠标位置不变
+            this.spectrumPanOffsetX = (mouseDataX - minX) * scaleX * this.spectrumZoomLevelX - (mouseX - margin.left);
+            this.spectrumPanOffsetY = (mouseDataY - minY) * scaleY * this.spectrumZoomLevelY - (this.canvas.height - margin.bottom - mouseY);
             
-            let newVisibleMinX, newVisibleMinY;
-            if (useMousePosition) {
-                // 使用鼠标位置计算新的可见范围
-                newVisibleMinX = refX - (mouseX - margin.left) / (newScaleX * this.spectrumZoomLevelX);
-                newVisibleMinY = refY - (this.canvas.height - margin.bottom - mouseY) / (newScaleY * this.spectrumZoomLevelY);
-            } else {
-                // 使用窗口中心计算新的可见范围
-                newVisibleMinX = refX - (plotWidth / 2) / (newScaleX * this.spectrumZoomLevelX);
-                newVisibleMinY = refY - (plotHeight / 2) / (newScaleY * this.spectrumZoomLevelY);
+            // 使用requestAnimationFrame优化渲染
+            if (this._wheelAnimationFrame) {
+                cancelAnimationFrame(this._wheelAnimationFrame);
             }
             
-            // 更新平移偏移量
-            this.spectrumPanOffsetX = (newVisibleMinX - minX) * newScaleX * this.spectrumZoomLevelX;
-            this.spectrumPanOffsetY = (newVisibleMinY - minY) * newScaleY * this.spectrumZoomLevelY;
-            
-            // 重新渲染光谱
-            this.renderSpectrum(data, true);
+            this._wheelAnimationFrame = requestAnimationFrame(() => {
+                this.renderSpectrum(data, true);
+                this._wheelAnimationFrame = null;
+            });
         }
     }
     
@@ -440,11 +431,22 @@ class SpectrumViewer {
             const plotWidth = this.canvas.width - margin.left - margin.right;
             const plotHeight = this.canvas.height - margin.top - margin.bottom;
             
-            // 计算数据范围
-            const minX = Math.min(...data.wavelength);
-            const maxX = Math.max(...data.wavelength);
-            const minY = Math.min(...data.flux);
-            const maxY = Math.max(...data.flux);
+            // 优化数据范围计算
+            let minX = data.wavelength[0];
+            let maxX = data.wavelength[0];
+            let minY = data.flux[0];
+            let maxY = data.flux[0];
+            
+            for (let i = 0; i < data.wavelength.length; i++) {
+                const x = data.wavelength[i];
+                const y = data.flux[i];
+                if (!isNaN(x) && !isNaN(y) && isFinite(x) && isFinite(y)) {
+                    minX = x < minX ? x : minX;
+                    maxX = x > maxX ? x : maxX;
+                    minY = y < minY ? y : minY;
+                    maxY = y > maxY ? y : maxY;
+                }
+            }
             
             // 确保矩形框在绘图区域内
             const adjustedLeft = Math.max(left, margin.left);
@@ -466,25 +468,20 @@ class SpectrumViewer {
             const boxMinY = visibleMinY + (this.canvas.height - adjustedBottom - margin.bottom) / (scaleY * this.spectrumZoomLevelY);
             const boxMaxY = visibleMinY + (this.canvas.height - adjustedTop - margin.bottom) / (scaleY * this.spectrumZoomLevelY);
             
-            // 计算矩形框的范围和中心点
+            // 计算新的缩放级别，考虑最大和最小缩放限制
             const boxWidthX = boxMaxX - boxMinX;
             const boxWidthY = boxMaxY - boxMinY;
             const boxCenterX = (boxMinX + boxMaxX) / 2;
             const boxCenterY = (boxMinY + boxMaxY) / 2;
             
-            // 计算新的可见范围，以矩形框为中心，两侧各扩展半个矩形框宽度
-            const targetWidthX = boxWidthX * 2;
-            const targetWidthY = boxWidthY * 2;
+            // 限制最大缩放级别，防止过度放大
+            const maxZoomLevel = 1000;
+            const newZoomLevelX = Math.min(maxZoomLevel, (maxX - minX) / boxWidthX * this.spectrumZoomLevelX);
+            const newZoomLevelY = Math.min(maxZoomLevel, (maxY - minY) / boxWidthY * this.spectrumZoomLevelY);
             
-            // 计算新的缩放级别
-            const newZoomLevelX = Math.min(50, (maxX - minX) / targetWidthX * this.spectrumZoomLevelX);
-            const newZoomLevelY = Math.min(50, (maxY - minY) / targetWidthY * this.spectrumZoomLevelY);
-            
-            // 计算新的平移偏移，使矩形框居中
-            const newVisibleMinX = boxCenterX - targetWidthX / 2;
-            const newVisibleMinY = boxCenterY - targetWidthY / 2;
-            const newPanOffsetX = (newVisibleMinX - minX) * scaleX * newZoomLevelX;
-            const newPanOffsetY = (newVisibleMinY - minY) * scaleY * newZoomLevelY;
+            // 计算新的平移偏移
+            const newPanOffsetX = (boxCenterX - minX - boxWidthX / 2) * scaleX * newZoomLevelX;
+            const newPanOffsetY = (boxCenterY - minY - boxWidthY / 2) * scaleY * newZoomLevelY;
             
             // 更新缩放和平移状态
             this.spectrumZoomLevelX = newZoomLevelX;
@@ -492,8 +489,10 @@ class SpectrumViewer {
             this.spectrumPanOffsetX = newPanOffsetX;
             this.spectrumPanOffsetY = newPanOffsetY;
             
-            // 重新渲染光谱
-            this.renderSpectrum(data, true);
+            // 使用requestAnimationFrame优化渲染
+            requestAnimationFrame(() => {
+                this.renderSpectrum(data, true);
+            });
             
             // 如果放大模式是一次性的，自动关闭放大模式
             if (this.isZoomBoxMode) {
@@ -602,28 +601,22 @@ class SpectrumViewer {
         // 清空画布
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
-        // 计算数据范围
-        let minY = Infinity;
-        let maxY = -Infinity;
-        let minX = Infinity;
-        let maxX = -Infinity;
+        // 优化数据范围计算
+        let minY = data.flux[0];
+        let maxY = data.flux[0];
+        let minX = data.wavelength[0];
+        let maxX = data.wavelength[0];
 
-        // 过滤无效值并计算范围
-        const validData = [];
+        // 使用循环代替展开操作符，提高性能
         for (let i = 0; i < data.wavelength.length; i++) {
-            if (!isNaN(data.flux[i]) && !isNaN(data.wavelength[i]) && 
-                isFinite(data.flux[i]) && isFinite(data.wavelength[i])) {
-                validData.push({x: data.wavelength[i], y: data.flux[i]});
-                minY = Math.min(minY, data.flux[i]);
-                maxY = Math.max(maxY, data.flux[i]);
-                minX = Math.min(minX, data.wavelength[i]);
-                maxX = Math.max(maxX, data.wavelength[i]);
+            const x = data.wavelength[i];
+            const y = data.flux[i];
+            if (!isNaN(x) && !isNaN(y) && isFinite(x) && isFinite(y)) {
+                minX = x < minX ? x : minX;
+                maxX = x > maxX ? x : maxX;
+                minY = y < minY ? y : minY;
+                maxY = y > maxY ? y : maxY;
             }
-        }
-
-        if (validData.length === 0) {
-            log('错误：没有有效的数据点');
-            return;
         }
 
         // 设置边距
@@ -633,7 +626,6 @@ class SpectrumViewer {
         
         // 添加一些padding到数据范围
         const rangeY = maxY - minY;
-        const rangeX = maxX - minX;
         minY -= rangeY * 0.05;
         maxY += rangeY * 0.05;
         
@@ -647,15 +639,14 @@ class SpectrumViewer {
         // 计算可见数据范围
         const visibleMinX = minX + this.spectrumPanOffsetX / (scaleX * this.spectrumZoomLevelX);
         const visibleMaxX = visibleMinX + (plotWidth / scaleX) / this.spectrumZoomLevelX;
-        
         const visibleMinY = minY + this.spectrumPanOffsetY / (scaleY * this.spectrumZoomLevelY);
         const visibleMaxY = visibleMinY + (plotHeight / scaleY) / this.spectrumZoomLevelY;
         
         // 绘制坐标轴刻度和网格线
         this.drawAxesAndGrid(margin, minX, maxX, minY, maxY, visibleMinX, visibleMaxX, visibleMinY, visibleMaxY, data);
         
-        // 绘制光谱线
-        this.drawSpectrumLine(margin, validData, minX, maxX, minY, maxY);
+        // 优化光谱线绘制
+        this.drawSpectrumLine(margin, data, minX, maxX, minY, maxY, visibleMinX, visibleMaxX);
         
         // 显示当前缩放级别
         this.showZoomLevel(margin);
@@ -790,8 +781,8 @@ class SpectrumViewer {
         this.ctx.restore();
     }
     
-    // 绘制光谱线
-    drawSpectrumLine(margin, validData, minX, maxX, minY, maxY) {
+    // 优化光谱线绘制方法
+    drawSpectrumLine(margin, data, minX, maxX, minY, maxY, visibleMinX, visibleMaxX) {
         const plotWidth = this.canvas.width - margin.left - margin.right;
         const plotHeight = this.canvas.height - margin.top - margin.bottom;
         
@@ -804,40 +795,45 @@ class SpectrumViewer {
         this.ctx.clip();
         
         // 计算可见数据范围
-        const visibleMinX = minX + this.spectrumPanOffsetX / (plotWidth / (maxX - minX) * this.spectrumZoomLevelX);
-        const visibleMaxX = visibleMinX + plotWidth / (plotWidth / (maxX - minX) * this.spectrumZoomLevelX);
         const visibleMinY = minY + this.spectrumPanOffsetY / (plotHeight / (maxY - minY) * this.spectrumZoomLevelY);
         const visibleMaxY = visibleMinY + plotHeight / (plotHeight / (maxY - minY) * this.spectrumZoomLevelY);
         
-        // 找到可见范围内的数据点
-        const visiblePoints = validData.filter(point => 
-            point.x >= visibleMinX && point.x <= visibleMaxX
-        );
+        // 计算数据点的步长，根据屏幕分辨率优化
+        const pixelRatio = window.devicePixelRatio || 1;
+        const minPointSpacing = 1 / pixelRatio; // 每个像素至少显示一个点
+        const dataPointSpacing = (visibleMaxX - visibleMinX) / plotWidth;
+        const stride = Math.max(1, Math.floor(dataPointSpacing / minPointSpacing));
         
-        if (visiblePoints.length === 0) return;
+        // 找到可见范围内的起始和结束索引
+        const startIdx = Math.max(0, Math.floor((visibleMinX - minX) / (maxX - minX) * data.wavelength.length));
+        const endIdx = Math.min(data.wavelength.length, Math.ceil((visibleMaxX - minX) / (maxX - minX) * data.wavelength.length));
         
-        // 绘制光谱线 - 直接连接点，不进行插值
+        // 绘制光谱线
         this.ctx.beginPath();
         this.ctx.strokeStyle = '#4a9eff';
         this.ctx.lineWidth = 1.5;
         
-        // 从第一个可见点开始绘制
-        const firstPoint = visiblePoints[0];
-        const firstX = margin.left + ((firstPoint.x - visibleMinX) * plotWidth / (visibleMaxX - visibleMinX));
-        const firstY = this.canvas.height - margin.bottom - ((firstPoint.y - visibleMinY) * plotHeight / (visibleMaxY - visibleMinY));
-        this.ctx.moveTo(firstX, firstY);
+        let isFirstPoint = true;
         
-        // 绘制所有可见点
-        for (let i = 1; i < visiblePoints.length; i++) {
-            const point = visiblePoints[i];
-            const x = margin.left + ((point.x - visibleMinX) * plotWidth / (visibleMaxX - visibleMinX));
-            const y = this.canvas.height - margin.bottom - ((point.y - visibleMinY) * plotHeight / (visibleMaxY - visibleMinY));
-            this.ctx.lineTo(x, y);
+        // 使用优化的绘制逻辑
+        for (let i = startIdx; i < endIdx; i += stride) {
+            const x = data.wavelength[i];
+            const y = data.flux[i];
+            
+            if (!isNaN(x) && !isNaN(y) && isFinite(x) && isFinite(y)) {
+                const screenX = margin.left + ((x - visibleMinX) * plotWidth / (visibleMaxX - visibleMinX));
+                const screenY = this.canvas.height - margin.bottom - ((y - visibleMinY) * plotHeight / (visibleMaxY - visibleMinY));
+                
+                if (isFirstPoint) {
+                    this.ctx.moveTo(screenX, screenY);
+                    isFirstPoint = false;
+                } else {
+                    this.ctx.lineTo(screenX, screenY);
+                }
+            }
         }
         
         this.ctx.stroke();
-        
-        // 恢复上下文状态
         this.ctx.restore();
     }
     
