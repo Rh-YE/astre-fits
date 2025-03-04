@@ -182,41 +182,104 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                 throw new Error('Coordinates out of image bounds');
             }
             
+            // Get pixel value | 获取像素值
+            const pixelValue = hduData.data[y * hduData.width + x];
+            
             // Calculate WCS coordinates if available | 计算WCS坐标（如果有）
             let wcs1 = '-';
             let wcs2 = '-';
             const header = this.dataManager.getHDUHeader(uri, currentHduIndex);
             if (header) {
+                // Get reference pixels and values | 获取参考像素和值
                 const crpix1 = header.getItem('CRPIX1')?.value;
                 const crpix2 = header.getItem('CRPIX2')?.value;
                 const crval1 = header.getItem('CRVAL1')?.value;
                 const crval2 = header.getItem('CRVAL2')?.value;
-                const cdelt1 = header.getItem('CDELT1')?.value;
-                const cdelt2 = header.getItem('CDELT2')?.value;
-                
+
+                // Check for different WCS representations | 检查不同的WCS表示方式
                 if (crpix1 !== undefined && crpix2 !== undefined &&
-                    crval1 !== undefined && crval2 !== undefined &&
-                    cdelt1 !== undefined && cdelt2 !== undefined) {
-                    const ra = crval1 + ((x + 1 - crpix1) * cdelt1);
-                    const dec = crval2 + ((y + 1 - crpix2) * cdelt2);
-                    wcs1 = `RA: ${ra.toFixed(6)}°`;
-                    wcs2 = `Dec: ${dec.toFixed(6)}°`;
+                    crval1 !== undefined && crval2 !== undefined) {
+                    
+                    let dx = x + 1 - crpix1;  // Convert to 1-based FITS coordinate | 转换为1-based的FITS坐标
+                    let dy = y + 1 - crpix2;
+                    let ra = crval1;
+                    let dec = crval2;
+
+                    // Try CD matrix first | 首先尝试CD矩阵
+                    const cd1_1 = header.getItem('CD1_1')?.value;
+                    const cd1_2 = header.getItem('CD1_2')?.value;
+                    const cd2_1 = header.getItem('CD2_1')?.value;
+                    const cd2_2 = header.getItem('CD2_2')?.value;
+
+                    if (cd1_1 !== undefined && cd1_2 !== undefined &&
+                        cd2_1 !== undefined && cd2_2 !== undefined) {
+                        // Use CD matrix transformation | 使用CD矩阵变换
+                        ra += cd1_1 * dx + cd1_2 * dy;
+                        dec += cd2_1 * dx + cd2_2 * dy;
+                        this.logger.debug('Using CD matrix for WCS calculation');
+                    } else {
+                        // Try PC matrix with CDELT | 尝试PC矩阵和CDELT
+                        const cdelt1 = header.getItem('CDELT1')?.value;
+                        const cdelt2 = header.getItem('CDELT2')?.value;
+                        const pc1_1 = header.getItem('PC1_1')?.value ?? 1;
+                        const pc1_2 = header.getItem('PC1_2')?.value ?? 0;
+                        const pc2_1 = header.getItem('PC2_1')?.value ?? 0;
+                        const pc2_2 = header.getItem('PC2_2')?.value ?? 1;
+
+                        if (cdelt1 !== undefined && cdelt2 !== undefined) {
+                            // Use PC matrix with CDELT | 使用PC矩阵和CDELT
+                            ra += cdelt1 * (pc1_1 * dx + pc1_2 * dy);
+                            dec += cdelt2 * (pc2_1 * dx + pc2_2 * dy);
+                            this.logger.debug('Using PC matrix with CDELT for WCS calculation');
+                        } else {
+                            // Try simple CDELT only | 只尝试简单的CDELT
+                            const cdelt1 = header.getItem('CDELT1')?.value;
+                            const cdelt2 = header.getItem('CDELT2')?.value;
+                            
+                            if (cdelt1 !== undefined && cdelt2 !== undefined) {
+                                // Use simple scaling | 使用简单的缩放
+                                ra += cdelt1 * dx;
+                                dec += cdelt2 * dy;
+                                this.logger.debug('Using simple CDELT for WCS calculation');
+                            } else {
+                                this.logger.debug('No valid WCS transformation found');
+                                ra = dec = undefined;
+                            }
+                        }
+                    }
+
+                    if (ra !== undefined && dec !== undefined) {
+                        wcs1 = `RA: ${ra.toFixed(6)}°`;
+                        wcs2 = `Dec: ${dec.toFixed(6)}°`;
+                        
+                        this.logger.debug('Calculated WCS coordinates:', {
+                            x, y,
+                            ra, dec,
+                            wcs1, wcs2
+                        });
+                    }
+                } else {
+                    this.logger.debug('Missing basic WCS keywords (CRPIX/CRVAL) in header');
                 }
+            } else {
+                this.logger.debug('No header information available');
             }
             
-            // Send WCS coordinate info to webview | 发送WCS坐标信息到webview
+            // Send pixel value and WCS coordinates to webview | 发送像素值和WCS坐标到webview
             this.webviewService.postMessage(webviewPanel.webview, {
-                command: 'setWCSValue',
+                command: 'setPixelValue',
+                value: pixelValue.toString(),
                 wcs1: wcs1,
                 wcs2: wcs2
             });
             
         } catch (error) {
-            this.logger.error('Error getting WCS coordinates:', error);
+            this.logger.error('Error getting pixel value:', error);
             this.webviewService.postMessage(webviewPanel.webview, {
-                command: 'setWCSValue',
-                wcs1: '-',
-                wcs2: '-'
+                command: 'setPixelValue',
+                value: 'error',
+                wcs1: 'error',
+                wcs2: 'error'
             });
         }
     }

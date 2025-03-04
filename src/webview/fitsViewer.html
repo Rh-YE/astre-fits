@@ -336,27 +336,6 @@
                     });
                 }
                 
-                // Export CSV functionality | 导出CSV功能
-                document.getElementById('export-table-button').addEventListener('click', () => {
-                    const table = document.getElementById('fits-table');
-                    const headers = Array.from(table.querySelectorAll('thead th'))
-                        .map(th => th.getAttribute('data-column'));
-                    
-                    const rows = Array.from(table.querySelectorAll('tbody tr'))
-                        .map(row => Array.from(row.cells).map(cell => cell.textContent));
-                    
-                    const csvContent = [
-                        headers.join(','),
-                        ...rows.map(row => row.join(','))
-                    ].join('\n');
-                    
-                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                    const link = document.createElement('a');
-                    link.href = URL.createObjectURL(blob);
-                    link.download = 'fits_table_data.csv';
-                    link.click();
-                });
-
                 // Add show table button event listener | 添加显示表格按钮事件监听
                 document.getElementById('show-table-button').addEventListener('click', () => {
                     vscode.postMessage({
@@ -409,11 +388,6 @@
                             
                         case 'setPixelValue':
                             document.getElementById('pixel-value').textContent = message.value || '-';
-                            document.getElementById('wcs-value-1').textContent = message.wcs1 || '-';
-                            document.getElementById('wcs-value-2').textContent = message.wcs2 || '-';
-                            break;
-                            
-                        case 'setWCSValue':
                             document.getElementById('wcs-value-1').textContent = message.wcs1 || '-';
                             document.getElementById('wcs-value-2').textContent = message.wcs2 || '-';
                             break;
@@ -513,12 +487,12 @@
                             document.getElementById('fits-canvas').style.display = 'none';
                             document.getElementById('spectrum-canvas').style.display = 'none';
                             document.getElementById('image-placeholder').style.display = 'none';
-                            // Show table operation buttons | 显示表格操作按钮
-                            document.querySelector('.table-button').parentElement.style.display = 'flex';
+                            // Show spectrum return button if needed | 如果需要则显示返回光谱按钮
+                            document.getElementById('return-spectrum-button').style.display = 
+                                message.isSpectralData ? 'block' : 'none';
                             // Hide spectrum related controls | 隐藏光谱相关控件
                             document.getElementById('spectrum-column-selectors').style.display = 'none';
                             document.getElementById('image-scale-buttons').style.display = 'none';
-
                             break;
                     }
                 });
@@ -597,8 +571,7 @@
             <div class="scale-controls">
                 <!-- Table operation buttons | 表格操作按钮 -->
                 <div style="display: flex; align-items: center; margin-right: 15px;">
-                    <button id="export-table-button" class="table-button">导出CSV</button>
-                    <button id="return-spectrum-button" class="table-button" style="margin-left: 10px;">返回光谱</button>
+                    <button id="return-spectrum-button" class="table-button" style="margin-left: 10px; display: none;">返回光谱</button>
                 </div>
 
                 <!-- Image scale buttons group | 图像缩放按钮组 -->
