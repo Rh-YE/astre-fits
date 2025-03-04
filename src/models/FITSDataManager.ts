@@ -5,31 +5,31 @@ import * as fs from 'fs';
 import * as crypto from 'crypto';
 import { LoadingManager } from './LoadingManager';
 
-// 定义HDU类型枚举
+// HDU Type Enumeration / HDU类型枚举
 export enum HDUType {
     IMAGE = 'IMAGE',
-    BINTABLE = 'BINTABLE',
+    BINTABLE = 'BINTABLE', 
     TABLE = 'TABLE',
     UNKNOWN = 'UNKNOWN'
 }
 
-// 定义表格列数据接口
+// Table Column Interface / 表格列数据接口
 export interface TableColumn {
-    name: string;           // 列名
-    format: string;         // TFORM值
-    unit?: string;         // 单位（可选）
-    dataType: string;      // 数据类型（E, D, J等）
-    repeatCount: number;   // 重复计数
-    data: Float32Array | Float64Array | Int8Array | Int16Array | Int32Array; // 列数据
+    name: string;           // Column name / 列名
+    format: string;         // TFORM value / TFORM值
+    unit?: string;         // Unit (optional) / 单位（可选）
+    dataType: string;      // Data type (E, D, J etc.) / 数据类型（E, D, J等）
+    repeatCount: number;   // Repeat count / 重复计数
+    data: Float32Array | Float64Array | Int8Array | Int16Array | Int32Array; // Column data / 列数据
 }
 
-// 定义表格数据接口
+// Table Data Interface / 表格数据接口
 export interface TableData {
-    columns: Map<string, TableColumn>;  // 列数据映射
-    rowCount: number;                   // 行数
+    columns: Map<string, TableColumn>;  // Column data mapping / 列数据映射
+    rowCount: number;                   // Row count / 行数
 }
 
-// 定义多列数据接口
+// Column Data Interface / 多列数据接口
 export interface ColumnData {
     name: string;
     data: Float32Array | Float64Array | Int8Array | Int16Array | Int32Array;
@@ -39,13 +39,13 @@ export interface ColumnData {
     repeatCount: number;
 }
 
-// 定义HDU数据接口
+// HDU Data Interface / HDU数据接口
 export interface HDUData {
     type: HDUType;
     width?: number;
     height?: number;
     data: Float32Array;
-    columns?: Map<string, ColumnData>;  // 新增：多列数据支持
+    columns?: Map<string, ColumnData>;  // Added: Multi-column support / 新增：多列数据支持
     tableData?: TableData;
     stats: {
         min: number;
@@ -55,14 +55,14 @@ export interface HDUData {
     };
 }
 
-// 定义缓存项接口
+// Cache Item Interface / 缓存项接口
 interface CacheItem {
     fits: FITS;
     processedData: Map<number, HDUData>;
     tempFiles: Set<string>;
 }
 
-// FITS数据管理器类
+// FITS Data Manager Class / FITS数据管理器类
 export class FITSDataManager {
     private static instance: FITSDataManager;
     private fitsCache: Map<string, CacheItem> = new Map();
@@ -78,7 +78,7 @@ export class FITSDataManager {
         this.loadingManager = LoadingManager.getInstance();
     }
 
-    // 添加锁机制的辅助方法
+    // Helper method for lock mechanism / 添加锁机制的辅助方法
     private async withLock<T>(key: string, operation: () => Promise<T>): Promise<T> {
         while (this.cacheLock.has(key)) {
             await this.cacheLock.get(key);
@@ -99,7 +99,7 @@ export class FITSDataManager {
         }
     }
 
-    // 获取单例实例
+    // Get singleton instance / 获取单例实例
     public static getInstance(context: vscode.ExtensionContext): FITSDataManager {
         if (!FITSDataManager.instance) {
             FITSDataManager.instance = new FITSDataManager(context);
@@ -107,7 +107,7 @@ export class FITSDataManager {
         return FITSDataManager.instance;
     }
 
-    // 加载FITS文件
+    // Load FITS file / 加载FITS文件
     public async loadFITS(fileUri: vscode.Uri, fits: FITS): Promise<void> {
         const uriString = fileUri.toString();
         
@@ -121,31 +121,31 @@ export class FITSDataManager {
 
                 this.fitsCache.set(uriString, cacheItem);
                 
-                // 预处理所有HDU数据
+                // Pre-process all HDU data / 预处理所有HDU数据
                 for (let i = 0; i < fits.hdus.length; i++) {
                     await this.processHDU(fileUri, i);
                 }
             } catch (error) {
-                console.error(`加载FITS文件失败: ${uriString}`, error);
+                console.error(`Failed to load FITS file: ${uriString}`, error);
                 await this.clearCache(fileUri);
                 throw error;
             }
         }));
     }
 
-    // 获取HDU数量
+    // Get HDU count / 获取HDU数量
     public getHDUCount(fileUri: vscode.Uri): number {
         const cacheItem = this.fitsCache.get(fileUri.toString());
         return cacheItem?.fits.hdus.length ?? 0;
     }
 
-    // 获取HDU头信息
+    // Get HDU header / 获取HDU头信息
     public getHDUHeader(fileUri: vscode.Uri, hduIndex: number): FITSHeader | null {
         const cacheItem = this.fitsCache.get(fileUri.toString());
         return cacheItem?.fits.hdus[hduIndex]?.header ?? null;
     }
 
-    // 获取HDU数据
+    // Get HDU data / 获取HDU数据
     public async getHDUData(fileUri: vscode.Uri, hduIndex: number): Promise<HDUData | null> {
         const uriString = fileUri.toString();
 
@@ -153,17 +153,17 @@ export class FITSDataManager {
             const cacheItem = this.fitsCache.get(uriString);
             if (!cacheItem) return null;
 
-            // 检查是否已处理
+            // Check if already processed / 检查是否已处理
             if (cacheItem.processedData.has(hduIndex)) {
                 return cacheItem.processedData.get(hduIndex)!;
             }
 
-            // 处理HDU数据
+            // Process HDU data / 处理HDU数据
             return this.processHDU(fileUri, hduIndex);
         });
     }
 
-    // 处理HDU数据
+    // Process HDU data / 处理HDU数据
     private async processHDU(fileUri: vscode.Uri, hduIndex: number): Promise<HDUData | null> {
         const cacheItem = this.fitsCache.get(fileUri.toString());
         if (!cacheItem) return null;
@@ -171,10 +171,10 @@ export class FITSDataManager {
         const hdu = cacheItem.fits.hdus[hduIndex];
         if (!hdu || !hdu.data) return null;
 
-        // 确定HDU类型
+        // Determine HDU type / 确定HDU类型
         const type = this.determineHDUType(hdu);
         
-        // 根据类型处理数据
+        // Process data based on type / 根据类型处理数据
         let processedData: HDUData;
         
         const hduWithData = { ...hdu, data: hdu.data } as FITSHDU & { data: Float32Array };
@@ -187,12 +187,12 @@ export class FITSDataManager {
             processedData = await this.processDefaultData(hduWithData);
         }
 
-        // 缓存处理后的数据
+        // Cache processed data / 缓存处理后的数据
         cacheItem.processedData.set(hduIndex, processedData);
         return processedData;
     }
 
-    // 确定HDU类型
+    // Determine HDU type / 确定HDU类型
     private determineHDUType(hdu: FITSHDU): HDUType {
         const xtension = hdu.header.getItem('XTENSION')?.value?.trim().toUpperCase();
         if (xtension) {
@@ -202,7 +202,7 @@ export class FITSDataManager {
             return HDUType.UNKNOWN;
         }
 
-        // 如果没有XTENSION，根据NAXIS判断
+        // If no XTENSION, determine by NAXIS / 如果没有XTENSION，根据NAXIS判断
         const naxis = hdu.header.getItem('NAXIS')?.value || 0;
         const naxis1 = hdu.header.getItem('NAXIS1')?.value || 0;
         const naxis2 = hdu.header.getItem('NAXIS2')?.value || 0;
@@ -214,12 +214,12 @@ export class FITSDataManager {
         return HDUType.UNKNOWN;
     }
 
-    // 处理图像数据
+    // Process image data / 处理图像数据
     private async processImageData(hdu: FITSHDU & { data: Float32Array }): Promise<HDUData> {
         const width = hdu.header.getItem('NAXIS1')?.value || 0;
         const height = hdu.header.getItem('NAXIS2')?.value || 0;
 
-        // 计算统计信息
+        // Calculate statistics / 计算统计信息
         let min = Number.MAX_VALUE;
         let max = Number.MIN_VALUE;
         let sum = 0;
@@ -246,20 +246,20 @@ export class FITSDataManager {
         };
     }
 
-    // 处理表格数据
+    // Process table data / 处理表格数据
     private async processTableData(hdu: FITSHDU & { data: Float32Array }): Promise<HDUData> {
         const naxis1 = hdu.header.getItem('NAXIS1')?.value || 0;
         const naxis2 = hdu.header.getItem('NAXIS2')?.value || 0;
         const tfields = hdu.header.getItem('TFIELDS')?.value || 0;
 
-        // 获取表格类型
+        // Get table type / 获取表格类型
         const xtension = hdu.header.getItem('XTENSION')?.value?.trim().toUpperCase();
         const type = xtension === 'BINTABLE' ? HDUType.BINTABLE : HDUType.TABLE;
 
-        // 创建列数据Map
+        // Create column data map / 创建列数据Map
         const columns = new Map<string, ColumnData>();
 
-        // 收集列信息
+        // Collect column information / 收集列信息
         for (let i = 1; i <= tfields; i++) {
             const ttype = hdu.header.getItem(`TTYPE${i}`)?.value || `COL${i}`;
             const tform = hdu.header.getItem(`TFORM${i}`)?.value;
@@ -271,7 +271,7 @@ export class FITSDataManager {
                     const repeatCount = match[1] ? parseInt(match[1]) : 1;
                     const dataType = match[2];
 
-                    // 获取列数据
+                    // Get column data / 获取列数据
                     const columnData = (hdu.data as any).columns?.get(ttype);
                     if (columnData) {
                         columns.set(ttype, columnData);
@@ -280,7 +280,7 @@ export class FITSDataManager {
             }
         }
 
-        // 计算统计信息（使用第一列数据）
+        // Calculate statistics using first column / 计算统计信息（使用第一列数据）
         let min = Number.MAX_VALUE;
         let max = Number.MIN_VALUE;
         
@@ -302,7 +302,7 @@ export class FITSDataManager {
         };
     }
 
-    // 处理默认数据
+    // Process default data / 处理默认数据
     private async processDefaultData(hdu: FITSHDU & { data: Float32Array }): Promise<HDUData> {
         let min = Number.MAX_VALUE;
         let max = Number.MIN_VALUE;
@@ -321,7 +321,7 @@ export class FITSDataManager {
         };
     }
 
-    // 创建临时文件
+    // Create temporary file / 创建临时文件
     public async createTempFile(fileUri: vscode.Uri, data: Buffer, prefix: string = 'fits-data'): Promise<string> {
         const uriString = fileUri.toString();
 
@@ -339,7 +339,7 @@ export class FITSDataManager {
         });
     }
 
-    // 清理文件缓存
+    // Clear file cache / 清理文件缓存
     public async clearCache(fileUri: vscode.Uri): Promise<void> {
         const uriString = fileUri.toString();
 
@@ -347,26 +347,26 @@ export class FITSDataManager {
             const cacheItem = this.fitsCache.get(uriString);
             
             if (cacheItem) {
-                // 清理临时文件
+                // Clean up temporary files / 清理临时文件
                 const deletionPromises = Array.from(cacheItem.tempFiles).map(async tempFile => {
                     try {
                         if (fs.existsSync(tempFile)) {
                             await fs.promises.unlink(tempFile);
                         }
                     } catch (error) {
-                        console.error(`清理临时文件失败: ${tempFile}`, error);
+                        console.error(`Failed to clean up temporary file: ${tempFile}`, error);
                     }
                 });
 
                 await Promise.all(deletionPromises);
             }
 
-            // 删除缓存项
+            // Delete cache item / 删除缓存项
             this.fitsCache.delete(uriString);
         });
     }
 
-    // 清理所有缓存
+    // Clear all caches / 清理所有缓存
     public async clearAllCaches(): Promise<void> {
         const clearPromises = Array.from(this.fitsCache.keys()).map(uriString => 
             this.clearCache(vscode.Uri.parse(uriString))

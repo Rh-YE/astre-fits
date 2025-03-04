@@ -1,4 +1,4 @@
-// 获取vscode API
+// Get vscode API | 获取vscode API
 const vscode = (() => {
     try {
         return acquireVsCodeApi();
@@ -8,13 +8,13 @@ const vscode = (() => {
     }
 })();
 
-// 日志函数
+// Log function | 日志函数
 function log(message) {
     console.log(message);
 }
 
 
-// 计算合适的刻度间隔
+// Calculate appropriate scale interval | 计算合适的刻度间隔
 function calculateNiceStep(roughStep) {
     const exponent = Math.floor(Math.log10(roughStep));
     const fraction = roughStep / Math.pow(10, exponent);
@@ -33,12 +33,12 @@ function calculateNiceStep(roughStep) {
     return niceFraction * Math.pow(10, exponent);
 }
 
-// 查找最近的数据点（只考虑X轴方向）
+// Find closest data point (X-axis only) | 查找最近的数据点（只考虑X轴方向）
 function findClosestDataPoint(points, targetX) {
     if (!points || points.length === 0) return null;
     if (points.length === 1) return points[0];
     
-    // 只考虑X轴方向的距离
+    // Only consider X-axis distance | 只考虑X轴方向的距离
     return points.reduce((closest, current) => {
         const currentDistance = Math.abs(current.x - targetX);
         const closestDistance = Math.abs(closest.x - targetX);
@@ -46,7 +46,7 @@ function findClosestDataPoint(points, targetX) {
     });
 }
 
-// 更新状态信息
+// Update status information | 更新状态信息
 function updateStatusInfo(currentImageData, zoomLevel) {
     const isUltraLargeImage = currentImageData.width * currentImageData.height > 80000000 || 
                              currentImageData.width > 16000 || 
@@ -66,7 +66,7 @@ function updateStatusInfo(currentImageData, zoomLevel) {
     }
 }
 
-// 显示缩放指示器
+// Show zoom indicator | 显示缩放指示器
 function showZoomIndicator(zoomIndicator, level, timeout = 2000) {
     zoomIndicator.textContent = `缩放: ${Math.round(level * 100)}%`;
     zoomIndicator.style.display = 'block';
@@ -76,7 +76,7 @@ function showZoomIndicator(zoomIndicator, level, timeout = 2000) {
     }, timeout);
 }
 
-// 导出共用函数和变量
+// Export common functions and variables | 导出共用函数和变量
 export {
     vscode,
     log,

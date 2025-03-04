@@ -22,7 +22,7 @@
     --vscode-list-activeSelectionForeground: var(--vscode-list-activeSelectionForeground, #ffffff);
 }
 
-/* 基础样式 */
+/* Base styles | 基础样式 */
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', 'HelveticaNeue-Light', 'Ubuntu', 'Droid Sans', sans-serif;
     margin: 0;
@@ -35,7 +35,7 @@ body {
     overflow: hidden;
 }
 
-/* 顶部区域容器 */
+/* Top area container | 顶部区域容器 */
 .top-container {
     display: flex;
     flex-direction: column;
@@ -46,7 +46,7 @@ body {
     overflow: hidden;
 }
 
-/* 顶部菜单栏样式 */
+/* Top menu bar styles | 顶部菜单栏样式 */
 .menu-bar {
     display: flex;
     background-color: var(--vscode-sidebar-background);
@@ -72,7 +72,7 @@ body {
     background-color: var(--vscode-list-hoverBackground);
 }
 
-/* 信息显示区样式 */
+/* Information display area styles | 信息显示区样式 */
 .info-panel {
     display: flex;
     padding: 5px;
@@ -144,7 +144,7 @@ body {
     white-space: nowrap;
 }
 
-/* 坐标显示容器 */
+/* Coordinate display container | 坐标显示容器 */
 #wcs-coords-container, #image-coords-container {
     display: flex;
     align-items: center;
@@ -170,14 +170,14 @@ body {
     white-space: nowrap;
 }
 
-/* 控制区样式 */
+/* Control area styles | 控制区样式 */
 .controls-container {
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
 }
 
-/* 缩放控制区样式 */
+/* Scale control area styles | 缩放控制区样式 */
 .scale-controls {
     display: flex;
     padding: 3px 10px;
@@ -223,7 +223,7 @@ body {
     border-color: var(--vscode-list-activeSelectionBackground);
 }
 
-/* 图像显示区样式 */
+/* Image display area styles | 图像显示区样式 */
 .image-container {
     flex: 1 1 auto;
     overflow: hidden;
@@ -258,7 +258,7 @@ body {
     box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);
 }
 
-/* 标题样式 */
+/* Title styles | 标题样式 */
 h3 {
     margin: 0 0 5px 0;
     font-size: 13px;
@@ -267,14 +267,14 @@ h3 {
     flex-shrink: 0;
 }
 
-/* 头文件信息滚动区域 */
+/* Header file information scroll area | 头文件信息滚动区域 */
 .header-scroll {
     flex: 1;
     overflow-y: auto;
     max-height: 100%;
 }
 
-/* 像素值显示样式 */
+/* Pixel value display styles | 像素值显示样式 */
 .pixel-info {
     position: absolute;
     bottom: 10px;
@@ -289,7 +289,7 @@ h3 {
     z-index: 100;
 }
 
-/* 调试信息样式 */
+/* Debug information styles | 调试信息样式 */
 .debug-info {
     position: absolute;
     top: 10px;
@@ -306,7 +306,7 @@ h3 {
     border: 1px solid var(--vscode-border);
 }
 
-/* 缩放和平移提示 */
+/* Zoom and pan hint | 缩放和平移提示 */
 .zoom-pan-hint {
     position: absolute;
     bottom: 10px;
@@ -321,7 +321,7 @@ h3 {
     border: 1px solid var(--vscode-border);
 }
 
-/* 缩放指示器 */
+/* Zoom indicator | 缩放指示器 */
 .zoom-indicator {
     position: absolute;
     top: 10px;
@@ -335,7 +335,7 @@ h3 {
     border: 1px solid var(--vscode-border);
 }
 
-/* 光谱显示样式 */
+/* Spectrum display styles | 光谱显示样式 */
 .spectrum-display {
     width: 100%;
     height: 100%;
@@ -343,7 +343,7 @@ h3 {
     border: 1px solid var(--vscode-border);
 }
 
-/* 折叠按钮 */
+/* Collapse button | 折叠按钮 */
 .collapse-button {
     position: absolute;
     right: 10px;
@@ -367,7 +367,7 @@ h3 {
     background-color: var(--vscode-list-hoverBackground);
 }
 
-/* 响应式布局调整 */
+/* Responsive layout adjustments | 响应式布局调整 */
 @media (max-width: 768px) {
     .info-panel {
         flex-direction: column;
@@ -386,7 +386,7 @@ h3 {
     }
 }
 
-/* 折叠状态的顶部容器 */
+/* Collapsed top container | 折叠状态的顶部容器 */
 .top-container.collapsed {
     max-height: 30px;
     min-height: 30px;
@@ -398,7 +398,7 @@ h3 {
     display: none;
 }
 
-/* 状态栏样式 */
+/* Status bar styles | 状态栏样式 */
 .status-bar {
     display: flex;
     background-color: var(--vscode-statusBar-background);
@@ -410,7 +410,7 @@ h3 {
     align-items: center;
 }
 
-/* 表格容器样式 */
+/* Table container styles | 表格容器样式 */
 .table-container {
     flex: 1;
     overflow: auto;
@@ -490,7 +490,7 @@ h3 {
     color: var(--vscode-list-activeSelectionForeground);
 }
 
-/* 表格分页样式 */
+/* Table pagination styles | 表格分页样式 */
 .table-pagination {
     display: flex;
     justify-content: center;

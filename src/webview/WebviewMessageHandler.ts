@@ -2,8 +2,8 @@ import * as vscode from 'vscode';
 import { Logger } from '../models/Logger';
 
 /**
- * Webview消息处理器接口
- * 定义处理不同类型webview消息的方法
+ * Webview message handler interface | Webview消息处理器接口
+ * Defines methods for handling different types of webview messages | 定义处理不同类型webview消息的方法
  */
 export interface IWebviewMessageHandler {
     handleWebviewReady(uri: vscode.Uri, webviewPanel: vscode.WebviewPanel): Promise<void>;
@@ -17,8 +17,8 @@ export interface IWebviewMessageHandler {
 }
 
 /**
- * Webview消息处理器类
- * 负责分发和处理来自webview的消息
+ * Webview message handler class | Webview消息处理器类
+ * Responsible for dispatching and handling messages from webview | 负责分发和处理来自webview的消息
  */
 export class WebviewMessageHandler {
     private logger: Logger;
@@ -30,14 +30,14 @@ export class WebviewMessageHandler {
     }
     
     /**
-     * 处理来自webview的消息
+     * Handle messages from webview | 处理来自webview的消息
      */
     public async handleMessage(
         message: any, 
         document: vscode.CustomDocument, 
         webviewPanel: vscode.WebviewPanel
     ): Promise<void> {
-        this.logger.debug(`收到webview消息: ${message.command}`);
+        this.logger.debug(`Received webview message: ${message.command} | 收到webview消息: ${message.command}`);
         
         try {
             switch (message.command) {
@@ -74,12 +74,12 @@ export class WebviewMessageHandler {
                     break;
                     
                 default:
-                    this.logger.warn(`未知的webview消息命令: ${message.command}`);
+                    this.logger.warn(`Unknown webview message command: ${message.command} | 未知的webview消息命令: ${message.command}`);
             }
         } catch (error) {
-            this.logger.error(`处理webview消息时出错: ${error}`);
+            this.logger.error(`Error handling webview message: ${error} | 处理webview消息时出错: ${error}`);
             
-            // 向webview发送错误消息
+            // Send error message to webview | 向webview发送错误消息
             webviewPanel.webview.postMessage({
                 command: 'error',
                 message: error instanceof Error ? error.message : String(error)

@@ -13,7 +13,7 @@ export class LoadingManager {
 
     public async startLoading(fileUri: string, loadingPromise: Promise<void>): Promise<void> {
         if (this.loadingFiles.has(fileUri)) {
-            // 如果文件正在加载，等待现有的加载完成
+            // If file is already loading, wait for existing load to complete / 如果文件正在加载，等待现有的加载完成
             return this.loadingFiles.get(fileUri)!;
         }
 

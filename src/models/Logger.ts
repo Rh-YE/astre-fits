@@ -6,8 +6,8 @@ export enum LogLevel {
 }
 
 /**
- * 日志记录器类
- * 提供统一的日志记录接口
+ * Logger class
+ * Provides unified logging interface
  */
 export class Logger {
     private static instance: Logger;
@@ -16,7 +16,7 @@ export class Logger {
     private constructor() {}
 
     /**
-     * 获取Logger实例
+     * Get Logger instance
      */
     public static getInstance(): Logger {
         if (!Logger.instance) {
@@ -26,14 +26,14 @@ export class Logger {
     }
 
     /**
-     * 设置日志级别
+     * Set log level
      */
     public setLogLevel(level: LogLevel): void {
         this.logLevel = level;
     }
 
     /**
-     * 记录调试信息
+     * Log debug message
      */
     public debug(message: string, ...args: any[]): void {
         if (this.logLevel <= LogLevel.DEBUG) {
@@ -42,7 +42,7 @@ export class Logger {
     }
 
     /**
-     * 记录一般信息
+     * Log info message
      */
     public info(message: string, ...args: any[]): void {
         if (this.logLevel <= LogLevel.INFO) {
@@ -51,7 +51,7 @@ export class Logger {
     }
 
     /**
-     * 记录警告信息
+     * Log warning message
      */
     public warn(message: string, ...args: any[]): void {
         if (this.logLevel <= LogLevel.WARN) {
@@ -60,11 +60,11 @@ export class Logger {
     }
 
     /**
-     * 记录错误信息
+     * Log error message
      */
     public error(message: string, ...args: any[]): void {
         if (this.logLevel <= LogLevel.ERROR) {
             console.error(`[ERROR] ${message}`, ...args);
         }
     }
-} 
+}

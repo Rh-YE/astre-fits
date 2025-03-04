@@ -1,12 +1,12 @@
 /**
- * FITS文件解析器
- * 用于解析FITS文件并提取头信息和数据
+ * FITS file parser | FITS文件解析器
+ * Used to parse FITS files and extract header information and data | 用于解析FITS文件并提取头信息和数据
  */
 
 import { HDUType, TableData } from './models/FITSDataManager';
 import { ColumnData as ImportedColumnData } from './models/FITSDataManager';
 
-// 基础列数据接口
+// Base column data interface | 基础列数据接口
 export interface BaseColumnData {
     name: string;
     format: string;
@@ -15,47 +15,47 @@ export interface BaseColumnData {
     repeatCount: number;
 }
 
-// 数值类型列数据接口
+// Numeric column data interface | 数值类型列数据接口
 export interface NumericColumnData extends BaseColumnData {
     data: Float32Array | Float64Array | Int8Array | Int16Array | Int32Array;
     getValue(index: number): number | number[];
 }
 
-// 字符串类型列数据接口
+// String column data interface | 字符串类型列数据接口
 export interface StringColumnData extends BaseColumnData {
-    data: string[];  // 改为直接存储字符串数组
+    data: string[];  // Store string array directly | 直接存储字符串数组
     getValue(index: number): string;
 }
 
-// 布尔类型列数据接口
+// Boolean column data interface | 布尔类型列数据接口
 export interface BooleanColumnData extends BaseColumnData {
-    data: boolean[] | boolean[][];  // 修改为支持一维或二维数组
+    data: boolean[] | boolean[][];  // Support 1D or 2D arrays | 修改为支持一维或二维数组
     getValue(index: number): boolean;
 }
 
-// 统一的列数据类型
+// Unified column data type | 统一的列数据类型
 export type ColumnData = NumericColumnData | StringColumnData | BooleanColumnData;
 
-// 常量定义
+// Constants definition | 常量定义
 const READONLY = 0;
 const READWRITE = 1;
 const MAX_DIMS = 999;
 const FLEN_KEYWORD = 72;
 const FLEN_VALUE = 72;
 const FLEN_COMMENT = 72;
-const FLEN_CARD = 80;      // 卡片长度
-const MAX_PREFIX_LEN = 20; // 文件类型前缀最大长度
-const NOT_FITS = 108;      // 错误代码：非FITS文件
-const FITS_BLOCK_SIZE = 2880; // FITS块大小
+const FLEN_CARD = 80;      // Card length | 卡片长度
+const MAX_PREFIX_LEN = 20; // Maximum length of file type prefix | 文件类型前缀最大长度
+const NOT_FITS = 108;      // Error code: not a FITS file | 错误代码：非FITS文件
+const FITS_BLOCK_SIZE = 2880; // FITS block size | FITS块大小
 
-// FITS文件类型
+// FITS file type | FITS文件类型
 enum FITSHDUType {
     IMAGE_HDU = 0,
     ASCII_TBL = 1,
     BINARY_TBL = 2
 }
 
-// 数据类型定义
+// Data type definition | 数据类型定义
 enum DataType {
     BYTE_IMG = 8,
     SHORT_IMG = 16,
@@ -64,7 +64,7 @@ enum DataType {
     DOUBLE_IMG = -64
 }
 
-// 压缩方法
+// Compression method | 压缩方法
 enum CompressionType {
     RICE_1 = 11,
     GZIP_1 = 21,
@@ -72,45 +72,45 @@ enum CompressionType {
     HCOMPRESS_1 = 41
 }
 
-// FITS文件头信息项
+// FITS file header item | FITS文件头信息项
 export interface FITSHeaderItem {
     key: string;
     value: any;
     comment?: string;
 }
 
-// FITS文件头信息
+// FITS file header | FITS文件头信息
 export class FITSHeader {
     private items: FITSHeaderItem[] = [];
     
     constructor() {}
     
-    // 添加头信息项
+    // Add header item | 添加头信息项
     addItem(key: string, value: any, comment?: string): void {
         this.items.push({ key, value, comment });
     }
     
-    // 获取头信息项
+    // Get header item | 获取头信息项
     getItem(key: string): FITSHeaderItem | undefined {
         return this.items.find(item => item.key === key);
     }
     
-    // 获取所有头信息项
+    // Get all header items | 获取所有头信息项
     getAllItems(): FITSHeaderItem[] {
         return this.items;
     }
 }
 
-// FITS文件HDU（Header Data Unit）
+// FITS file HDU (Header Data Unit) | FITS文件HDU（Header Data Unit）
 export class FITSHDU {
     constructor(
         public header: FITSHeader,
         public data: Float32Array | null = null,
         public fileInfo: {
-            headerStart: number,    // 头部起始字节位置
-            dataStart: number,      // 数据块起始字节位置
-            dataSize: number,       // 数据大小（包含填充）
-            headerSize: number      // 头部大小（包含填充）
+            headerStart: number,    // Header start byte position | 头部起始字节位置
+            dataStart: number,      // Data block start byte position | 数据块起始字节位置
+            dataSize: number,       // Data size (including padding) | 数据大小（包含填充）
+            headerSize: number      // Header size (including padding) | 头部大小（包含填充）
         } = {
             headerStart: 0,
             dataStart: 0,
@@ -120,14 +120,14 @@ export class FITSHDU {
     ) {}
 }
 
-// FITS文件
+// FITS file | FITS文件
 export class FITS {
     constructor(
         public headers: FITSHeader[] = [],
         public hdus: FITSHDU[] = []
     ) {}
     
-    // 获取指定索引的HDU
+    // Get HDU by index | 获取指定索引的HDU
     getHDU(index: number): FITSHDU | undefined {
         if (index >= 0 && index < this.hdus.length) {
             return this.hdus[index];
@@ -153,7 +153,7 @@ class FitsBuffer {
     }
 
     public readInt16(): number {
-        const value = this.view.getInt16(this.position, false); // FITS使用大端字节序
+        const value = this.view.getInt16(this.position, false); // FITS uses big-endian | FITS使用大端字节序
         this.position += 2;
         return value;
     }
@@ -165,14 +165,14 @@ class FitsBuffer {
     }
 
     public readInt64(): number {
-        // JavaScript不能精确表示超过53位的整数
-        // 这里我们读取高32位和低32位，然后组合它们
+        // JavaScript cannot precisely represent integers over 53 bits | JavaScript不能精确表示超过53位的整数
+        // Here we read high 32 bits and low 32 bits, then combine them | 这里我们读取高32位和低32位，然后组合它们
         const highBits = this.view.getInt32(this.position, false);
         const lowBits = this.view.getUint32(this.position + 4, false);
         this.position += 8;
         
-        // 组合高32位和低32位
-        // 注意：如果数值超过Number.MAX_SAFE_INTEGER (2^53-1)，可能会丢失精度
+        // Combine high 32 bits and low 32 bits | 组合高32位和低32位
+        // Note: If value exceeds Number.MAX_SAFE_INTEGER (2^53-1), precision may be lost | 注意：如果数值超过Number.MAX_SAFE_INTEGER (2^53-1)，可能会丢失精度
         return highBits * Math.pow(2, 32) + lowBits;
     }
 
@@ -211,14 +211,14 @@ class FitsBuffer {
     }
 }
 
-// 修改接口定义，继承Float32Array的所有属性
+// Modify interface definition to inherit all properties of Float32Array | 修改接口定义，继承Float32Array的所有属性
 export interface TableResult extends Float32Array {
     columns: Map<string, ColumnData>;
     getColumnValue(columnName: string, index: number): string | number;
     isStringColumn(columnName: string): boolean;
 }
 
-// 修改列信息的接口定义
+// Modify column information interface definition | 修改列信息的接口定义
 interface ColumnInfo {
     name: string;
     format: string;
@@ -227,48 +227,47 @@ interface ColumnInfo {
     repeatCount: number;
     byteOffset: number;
     byteSize: number;
-    data: any;  // 使用 any 类型，因为可能是数值数组或字符串数组
+    data: any;  // Use any type as it could be numeric or string array | 使用 any 类型，因为可能是数值数组或字符串数组
     isString: boolean;
 }
 
-// FITS文件解析器
+// FITS file parser | FITS文件解析器
 export class FITSParser {
     private buffer: FitsBuffer | null = null;
     private header: FITSHeader | null = null;
-
-    // 解析FITS文件
+    // Parse FITS file | 解析FITS文件
     parseFITS(buffer: Uint8Array): FITS {
-        console.log('开始解析FITS文件...');
+        console.log('Starting to parse FITS file...');
         const fits = new FITS();
         
-        // 检查FITS文件头
+        // Check FITS file header | 检查FITS文件头
         if (buffer.length < FITS_BLOCK_SIZE) {
-            throw new Error('无效的FITS文件格式');
+            throw new Error('Invalid FITS file format');
         }
         
         this.buffer = new FitsBuffer(buffer);
         
-        // 验证FITS文件头
+        // Validate FITS file header | 验证FITS文件头
         if (!this.validateFITSHeader()) {
-            throw new Error('无效的FITS文件格式');
+            throw new Error('Invalid FITS file format');
         }
         
-        // 重置偏移量，确保从文件开头开始计算
+        // Reset offset to ensure starting from file beginning | 重置偏移量，确保从文件开头开始计算
         let offset = 0;
-        let currentOffset = 0;  // 用于跟踪实际的文件位置
+        let currentOffset = 0;  // Used to track actual file position | 用于跟踪实际的文件位置
         
-        // 解析主头信息
-        console.log('解析主头信息...');
+        // Parse primary header information | 解析主头信息
+        console.log('Parsing primary header...');
         const primaryHeader = this.parseHeader(offset);
         
-        // 验证主HDU
+        // Validate primary HDU | 验证主HDU
         if (!this.validatePrimaryHDU(primaryHeader)) {
-            throw new Error('无效的主HDU格式');
+            throw new Error('Invalid primary HDU format');
         }
         
         fits.headers.push(primaryHeader);
         
-        // 计算数据块大小
+        // Calculate data block size | 计算数据块大小
         const bitpix = primaryHeader.getItem('BITPIX')?.value || 0;
         const naxis = primaryHeader.getItem('NAXIS')?.value || 0;
         
@@ -285,38 +284,37 @@ export class FITSParser {
             }
         }
         
-        console.log(`数据大小: ${dataSize} 字节`);
+        console.log(`Data size: ${dataSize} bytes`);
         
-        // 计算头信息块数和数据块数
+        // Calculate header blocks and data blocks | 计算头信息块数和数据块数
         const headerSize = this.findHeaderEnd(offset);
         if (headerSize === 0) {
-            throw new Error('无法找到头部结束标记(END)');
+            throw new Error('Cannot find header end mark (END)');
         }
         const headerBlocks = Math.ceil(headerSize / FITS_BLOCK_SIZE);
         const alignedHeaderSize = headerBlocks * FITS_BLOCK_SIZE;
         const headerEnd = offset + alignedHeaderSize;
-        currentOffset = headerEnd;  // 更新当前位置到头部结束
+        currentOffset = headerEnd;  // Update current position to header end | 更新当前位置到头部结束
+
+        console.log(`Actual header size: ${headerSize} bytes`);
+        console.log(`Aligned header size: ${alignedHeaderSize} bytes (${headerBlocks} blocks)`);
+        console.log(`Data start position: ${headerEnd}`);
         
-        console.log(`头信息实际大小: ${headerSize} 字节`);
-        console.log(`头信息对齐后大小: ${alignedHeaderSize} 字节 (${headerBlocks} 个块)`);
-        console.log(`数据起始位置: ${headerEnd}`);
-        
-        // 计算数据块数并调整偏移量
+        // Calculate data blocks and adjust offset
         const dataBlocks = Math.ceil(dataSize / FITS_BLOCK_SIZE);
         const alignedDataSize = dataBlocks * FITS_BLOCK_SIZE;
         const dataEnd = headerEnd + alignedDataSize;
-        currentOffset = dataEnd;  // 更新当前位置到数据结束
+        currentOffset = dataEnd;  // Update current position to data end
         
-        console.log(`数据块数: ${dataBlocks}, 数据结束于 ${dataEnd}`);
-        
-        // 解析主HDU数据（如果有）
+        console.log(`Data blocks: ${dataBlocks}, data ends at ${dataEnd}`);
+        // Parse primary HDU data (if exists)
         let data: Float32Array | null = null;
         if (dataSize > 0) {
-            console.log('解析主数据...');
+            console.log('Parsing primary data...');
             data = this.parseData(headerEnd, primaryHeader);
         }
         
-        // 创建主HDU，包含文件位置信息
+        // Create primary HDU with file position info
         const primaryHDU = new FITSHDU(primaryHeader, data, {
             headerStart: offset,
             dataStart: headerEnd,
@@ -325,66 +323,66 @@ export class FITSParser {
         });
         fits.hdus.push(primaryHDU);
         
-        // 更新偏移量到下一个HDU的开始位置
+        // Update offset to start of next HDU
         offset = currentOffset;
-        console.log('主HDU解析完成，当前偏移量:', offset);
+        console.log('Primary HDU parsing complete, current offset:', offset);
         
-        // 解析扩展HDU
+        // Parse extension HDUs
         let extCount = 0;
         const maxExtensions = 10;
         
         while (offset < buffer.length && extCount < maxExtensions) {
             try {
-                console.log(`解析扩展 #${extCount + 1}...`);
-                console.log(`当前偏移量: ${offset}`);
+                console.log(`Parsing extension #${extCount + 1}...`);
+                console.log(`Current offset: ${offset}`);
                 
-                // 检查是否还有足够的数据
+                // Check if enough data remains
                 if (buffer.length - offset < FITS_BLOCK_SIZE) {
-                    console.log('剩余数据不足一个块，停止解析');
+                    console.log('Remaining data less than one block, stop parsing');
                     break;
                 }
                 
                 this.buffer.seek(offset);
                 
-                // 检查是否是有效的扩展头
+                // Check if valid extension header
                 if (!this.isValidExtension()) {
-                    console.log('未找到有效的扩展头，停止解析');
+                    console.log('No valid extension header found, stop parsing');
                     break;
                 }
                 
-                // 解析扩展头信息
+                // Parse extension header
                 const extHeader = this.parseHeader(offset);
-                console.log(`扩展 HDU #${extCount + 1} 头信息关键字: `, extHeader.getAllItems().map(item => item.key));
+                console.log(`Extension HDU #${extCount + 1} header keywords:`, extHeader.getAllItems().map(item => item.key));
                 
-                // 检查是否找到END关键字
+                // Check if END keyword found
                 if (extHeader.getAllItems().length === 0) {
-                    console.log('扩展头为空，停止解析');
+                    console.log('Extension header empty, stop parsing');
                     break;
                 }
                 
                 fits.headers.push(extHeader);
                 
-                // 计算扩展头信息大小
+                // Calculate extension header size
                 const extHeaderSize = this.findHeaderEnd(offset);
                 if (extHeaderSize === 0) {
-                    console.log('未找到扩展头部结束标记，停止解析');
+                    console.log('Extension header end mark not found, stop parsing');
                     break;
                 }
 
-                // 计算头部占用的完整2880字节块数
+                // Calculate complete 2880-byte blocks for header
                 const extHeaderBlocks = Math.ceil(extHeaderSize / FITS_BLOCK_SIZE);
                 const alignedHeaderSize = extHeaderBlocks * FITS_BLOCK_SIZE;
-                const headerEnd = offset + alignedHeaderSize;  // 扩展数据起始位置
+                const headerEnd = offset + alignedHeaderSize;  // Extension data start position
 
-                console.log(`扩展头大小计算详情:`);
-                console.log(`- 实际头部大小（包括END卡片）: ${extHeaderSize} 字节`);
-                console.log(`- 需要的2880字节块数: ${extHeaderBlocks}`);
-                console.log(`- 对齐后的头部大小: ${alignedHeaderSize} 字节`);
-                console.log(`- 头部起始位置: ${offset}`);
-                console.log(`- 头部结束位置: ${offset + extHeaderSize}`);
-                console.log(`- 数据起始位置: ${headerEnd}`);
+                console.log(`Extension header size details:`);
+                console.log(`- Actual header size (including END card): ${extHeaderSize} bytes`);
+                console.log(`- Required 2880-byte blocks: ${extHeaderBlocks}`);
+                console.log(`- Aligned header size: ${alignedHeaderSize} bytes`);
+                console.log(`- Header start position: ${offset}`);
+                console.log(`- Header end position: ${offset + extHeaderSize}`);
+                console.log(`- Data start position: ${headerEnd}`);
                 
-                // 计算扩展数据大小
+                // Calculate extension data size
                 let extDataSize = 0;
                 const xtensionItem = extHeader.getItem('XTENSION');
                 if (xtensionItem) {
@@ -393,89 +391,89 @@ export class FITSParser {
                         const naxis1 = extHeader.getItem('NAXIS1')?.value || 0;
                         const naxis2 = extHeader.getItem('NAXIS2')?.value || 0;
                         extDataSize = naxis1 * naxis2;
-                        console.log(`按${hduType}类型计算扩展数据大小: ${extDataSize} 字节, NAXIS1=${naxis1}, NAXIS2=${naxis2}`);
+                        console.log(`Calculate extension data size as ${hduType}: ${extDataSize} bytes, NAXIS1=${naxis1}, NAXIS2=${naxis2}`);
                     }
                 }
                 
-                // 计算对齐后的数据大小
+                // Calculate aligned data size
                 const dataBlocks = Math.ceil(extDataSize / FITS_BLOCK_SIZE);
                 const alignedDataSize = dataBlocks * FITS_BLOCK_SIZE;
                 const dataEnd = headerEnd + alignedDataSize;
-                console.log(`数据大小计算:`);
-                console.log(`- 原始数据大小: ${extDataSize} 字节`);
-                console.log(`- 数据块数: ${dataBlocks}`);
-                console.log(`- 对齐后数据大小: ${alignedDataSize} 字节`);
-                console.log(`- 数据结束位置: ${dataEnd}`);
+                console.log(`Data size calculation:`);
+                console.log(`- Original data size: ${extDataSize} bytes`);
+                console.log(`- Data blocks: ${dataBlocks}`);
+                console.log(`- Aligned data size: ${alignedDataSize} bytes`);
+                console.log(`- Data end position: ${dataEnd}`);
                 
-                // 解析扩展数据
+                // Parse extension data
                 let extData: Float32Array | null = null;
                 if (extDataSize > 0) {
-                    console.log('解析扩展数据...');
+                    console.log('Parsing extension data...');
                     if (xtensionItem?.value.trim() === 'BINTABLE') {
-                        console.log('检测到BINTABLE，使用二进制表解析方法');
+                        console.log('BINTABLE detected, using binary table parser');
                         extData = this.parseBinaryTable(headerEnd, extHeader, buffer.length - headerEnd);
                     } else if (xtensionItem?.value.trim() === 'TABLE') {
-                        console.log('检测到ASCII表格，使用ASCII表格解析方法');
+                        console.log('ASCII table detected, using ASCII table parser');
                         extData = this.parseAsciiTable(headerEnd, extHeader, buffer.length - headerEnd);
                     }
                 }
                 
-                console.log(`扩展 HDU #${extCount + 1} 数据解析结果: `, extData ? `长度=${extData.length}, 示例数据=${extData.slice(0, Math.min(10, extData.length))}` : 'null');
+                console.log(`Extension HDU #${extCount + 1} data parsing result: ${extData ? `length=${extData.length}, sample data=${extData.slice(0, Math.min(10, extData.length))}` : 'null'}`);
                 
-                // 创建扩展HDU，包含文件位置信息
+                // Create extension HDU with file position info
                 const extHDU = new FITSHDU(extHeader, extData, {
-                    headerStart: offset,      // 扩展HDU头部开始位置
-                    dataStart: headerEnd,     // 扩展HDU数据开始位置
-                    dataSize: alignedDataSize,// 扩展HDU数据大小（包含填充）
-                    headerSize: alignedHeaderSize    // 扩展HDU头部大小（包含填充）
+                    headerStart: offset,      // Extension HDU header start position
+                    dataStart: headerEnd,     // Extension HDU data start position
+                    dataSize: alignedDataSize,// Extension HDU data size (with padding)
+                    headerSize: alignedHeaderSize    // Extension HDU header size (with padding)
                 });
                 fits.hdus.push(extHDU);
                 
-                // 更新偏移量到下一个HDU
+                // Update offset to next HDU
                 offset = dataEnd;
                 
                 extCount++;
             } catch (error) {
-                console.error(`解析扩展 #${extCount + 1} 时出错:`, error);
+                console.error(`Error parsing extension #${extCount + 1}:`, error);
                 break;
             }
         }
         
-        console.log(`解析完成，共 ${fits.hdus.length} 个HDU`);
+        console.log(`Parsing complete, total ${fits.hdus.length} HDUs`);
         return fits;
     }
 
     private validateFITSHeader(): boolean {
         if (!this.buffer) return false;
         
-        // 检查SIMPLE关键字
+        // Check SIMPLE keyword
         const header = this.buffer.readString(FLEN_CARD);
         if (!header.startsWith('SIMPLE  =')) {
-            console.error('FITS头部验证失败：缺少SIMPLE关键字');
+            console.error('FITS header validation failed: missing SIMPLE keyword');
             return false;
         }
 
-        // 检查SIMPLE值是否为T
+        // Check if SIMPLE value is T
         if (header[29] !== 'T') {
-            console.error('FITS头部验证失败：SIMPLE值不是T');
+            console.error('FITS header validation failed: SIMPLE value is not T');
             return false;
         }
 
         this.buffer.seek(FLEN_CARD);
         
-        // 检查BITPIX
+        // Check BITPIX
         const bitpixLine = this.buffer.readString(FLEN_CARD);
         if (!bitpixLine.startsWith('BITPIX')) {
-            console.error('FITS头部验证失败：缺少BITPIX关键字');
+            console.error('FITS header validation failed: missing BITPIX keyword');
             return false;
         }
 
         this.buffer.seek(FLEN_CARD * 2);
         
-        // 检查NAXIS
+        // Check NAXIS
         const naxisLine = this.buffer.readString(FLEN_CARD);
         if (!naxisLine.startsWith('NAXIS')) {
-            console.error('FITS头部验证失败：缺少NAXIS关键字');
+            console.error('FITS header validation failed: missing NAXIS keyword');
             return false;
         }
 
@@ -483,27 +481,27 @@ export class FITSParser {
     }
 
     private validatePrimaryHDU(header: FITSHeader): boolean {
-        // 验证必需的关键字
+        // Validate required keywords
         const requiredKeys = ['SIMPLE', 'BITPIX', 'NAXIS'];
         for (const key of requiredKeys) {
             if (!header.getItem(key)) {
-                console.error(`主HDU验证失败：缺少${key}关键字`);
+                console.error(`Primary HDU validation failed: missing ${key} keyword`);
                 return false;
             }
         }
 
-        // 验证BITPIX值
+        // Validate BITPIX value
         const bitpix = header.getItem('BITPIX')?.value;
         const validBitpix = [8, 16, 32, 64, -32, -64];
         if (!validBitpix.includes(bitpix)) {
-            console.error(`主HDU验证失败：无效的BITPIX值 ${bitpix}`);
+            console.error(`Primary HDU validation failed: invalid BITPIX value ${bitpix}`);
             return false;
         }
 
-        // 验证NAXIS值
+        // Validate NAXIS value
         const naxis = header.getItem('NAXIS')?.value;
         if (typeof naxis !== 'number' || naxis < 0 || naxis > MAX_DIMS) {
-            console.error(`主HDU验证失败：无效的NAXIS值 ${naxis}`);
+            console.error(`Primary HDU validation failed: invalid NAXIS value ${naxis}`);
             return false;
         }
 
@@ -520,7 +518,7 @@ export class FITSParser {
         if (!this.buffer) return 0;
         
         this.buffer.seek(startOffset);
-        const maxLines = 10000; // 防止无限循环
+        const maxLines = 10000; // Prevent infinite loop
         let lineCount = 0;
         
         while (lineCount < maxLines) {
@@ -528,7 +526,7 @@ export class FITSParser {
             lineCount++;
             
             if (line.startsWith('END')) {
-                // 返回实际的头部大小（包括END卡片）
+                // Return actual header size (including END card)
                 return lineCount * FLEN_CARD;
             }
         }
@@ -538,7 +536,6 @@ export class FITSParser {
 
     private parseHeader(offset: number): FITSHeader {
         if (!this.buffer) throw new Error('Buffer not initialized');
-        
         const header = new FITSHeader();
         this.buffer.seek(offset);
         const maxLines = 1000;
@@ -632,17 +629,17 @@ export class FITSParser {
                         value = this.buffer.readFloat64();
                         break;
                     default:
-                        throw new Error(`不支持的BITPIX值: ${bitpix}`);
+                        throw new Error(`Unsupported BITPIX value: ${bitpix}`);
                 }
                 
                 data[i] = value * bscale + bzero;
             }
         } catch (error) {
-            console.error('解析数据时出错:', error);
+            console.error('Error parsing data:', error);
             return new Float32Array(0);
         }
         
-        console.log(`parseData: 解析完成, bitpix=${bitpix}, naxis=${naxis}, dataSize=${dataSize}, data长度=${data.length}, 示例数据=`, data.slice(0, Math.min(10, data.length)));
+        console.log(`parseData: Parsing completed, bitpix=${bitpix}, naxis=${naxis}, dataSize=${dataSize}, data length=${data.length}, sample data=`, data.slice(0, Math.min(10, data.length)));
         
         return data;
     }
@@ -650,18 +647,18 @@ export class FITSParser {
     private parseBinaryTable(offset: number, header: FITSHeader, availableBytes: number): TableResult {
         if (!this.buffer) throw new Error('Buffer not initialized');
         
-        console.log('开始解析二进制表格数据');
-        console.log('数据起始偏移量:', offset);
-        console.log('可用字节数:', availableBytes);
+        console.log('Start parsing binary table data');
+        console.log('Data start offset:', offset);
+        console.log('Available bytes:', availableBytes);
         
         const naxis1 = header.getItem('NAXIS1')?.value;
         const naxis2 = header.getItem('NAXIS2')?.value;
         const tfields = header.getItem('TFIELDS')?.value;
         
-        console.log(`NAXIS1 (行长度) = ${naxis1}, NAXIS2 (行数) = ${naxis2}, TFIELDS (字段数) = ${tfields}`);
+        console.log(`NAXIS1 (row length) = ${naxis1}, NAXIS2 (row count) = ${naxis2}, TFIELDS (field count) = ${tfields}`);
         
         if (!naxis1 || !naxis2 || !tfields) {
-            console.error('二进制表格缺少必要的头信息');
+            console.error('Binary table missing required header information');
             const errorResult = new Float32Array(0) as TableResult;
             Object.defineProperties(errorResult, {
                 columns: { value: new Map(), writable: true },
@@ -671,33 +668,33 @@ export class FITSParser {
             return errorResult;
         }
 
-        // 解析列信息
+        // Parse column information
         const columns = new Map<string, ColumnInfo>();
 
         let currentOffset = 0;
         
-        // 首先收集所有列的信息
+        // First collect all column information
         for (let i = 1; i <= tfields; i++) {
             const tform = header.getItem(`TFORM${i}`)?.value;
             const ttype = header.getItem(`TTYPE${i}`)?.value || `COL${i}`;
             const tunit = header.getItem(`TUNIT${i}`)?.value || '';
             
             if (!tform) {
-                console.error(`缺少TFORM${i}定义`);
+                console.error(`Missing TFORM${i} definition`);
                 continue;
             }
             
-            // 解析TFORM格式：rTa
+            // Parse TFORM format: rTa
             const match = tform.match(/^(\d*)([A-Z])/);
             if (!match) {
-                console.error(`无效的TFORM${i}格式: ${tform}`);
+                console.error(`Invalid TFORM${i} format: ${tform}`);
                 continue;
             }
             
             const repeatCount = match[1] ? parseInt(match[1]) : 1;
             const dataType = match[2];
             
-            // 确定数据类型的字节大小和对应的TypedArray
+            // Determine data type byte size and corresponding TypedArray
             let byteSize: number;
             let ArrayType: any;
             let isString = false;
@@ -705,7 +702,7 @@ export class FITSParser {
             switch (dataType) {
                 case 'L':  // Logical
                     byteSize = 1;
-                    ArrayType = null;  // 不使用TypedArray
+                    ArrayType = null;  // Don't use TypedArray
                     isString = false;
                     break;
                 case 'X':  // Bit
@@ -726,7 +723,7 @@ export class FITSParser {
                     break;
                 case 'K':  // 64-bit integer
                     byteSize = 8;
-                    ArrayType = Float64Array; // 使用Float64Array存储，因为JavaScript没有Int64Array
+                    ArrayType = Float64Array; // Use Float64Array as JavaScript has no Int64Array
                     break;
                 case 'A':  // Character
                     byteSize = 1;
@@ -742,26 +739,26 @@ export class FITSParser {
                     break;
                 case 'C':  // Single-precision complex
                     byteSize = 8;
-                    ArrayType = Float32Array; // 使用Float32Array存储，每个复数占用两个元素
+                    ArrayType = Float32Array; // Use Float32Array, each complex number uses two elements
                     break;
                 case 'M':  // Double-precision complex
                     byteSize = 16;
-                    ArrayType = Float64Array; // 使用Float64Array存储，每个复数占用两个元素
+                    ArrayType = Float64Array; // Use Float64Array, each complex number uses two elements
                     break;
                 case 'P':  // Array Descriptor (32-bit)
                     byteSize = 8;
-                    ArrayType = Int32Array; // 使用Int32Array存储描述符
+                    ArrayType = Int32Array; // Use Int32Array to store descriptor
                     break;
                 case 'Q':  // Array Descriptor (64-bit)
                     byteSize = 16;
-                    ArrayType = Float64Array; // 使用Float64Array存储描述符
+                    ArrayType = Float64Array; // Use Float64Array to store descriptor
                     break;
                 default:
-                    console.warn(`不支持的数据类型: ${dataType}`);
+                    console.warn(`Unsupported data type: ${dataType}`);
                     continue;
             }
 
-            // 为每列创建适当大小的数组
+            // Create appropriate size array for each column / 为每列创建适当大小的数组
             const arraySize = naxis2 * repeatCount;
             const columnData = dataType === 'L' ? new Array(arraySize).fill(false) :
                               isString ? new Array(naxis2) :
@@ -783,104 +780,104 @@ export class FITSParser {
         }
 
         try {
-            // 读取每一行的数据
+            // Read data for each row / 读取每一行的数据
             for (let row = 0; row < naxis2; row++) {
                 const rowStart = offset + row * naxis1;
 
-                // 处理每一列
+                // Process each column / 处理每一列
                 for (const [name, column] of columns) {
                     const colOffset = rowStart + column.byteOffset;
                     this.buffer.seek(colOffset);
 
-                    // 读取该列在当前行的所有值
+                    // Read all values for this column in current row / 读取该列在当前行的所有值
                     for (let r = 0; r < column.repeatCount; r++) {
                         const dataIndex = row * column.repeatCount + r;
                         
                         try {
                             let value: number;
                             switch (column.dataType) {
-                                case 'L': // Logical
-                                    // 读取原始字节值
+                                case 'L': // Logical / 逻辑值
+                                    // Read raw byte value / 读取原始字节值
                                     const rawByte = this.buffer.readInt8();
-                                    // 根据FITS标准，'T'和非零值表示true，'F'和零值表示false
-                                    const boolValue = rawByte === 84 || (rawByte !== 0 && rawByte !== 70);  // 84是'T'的ASCII码，70是'F'的ASCII码
+                                    // According to FITS standard, 'T' and non-zero values are true, 'F' and zero values are false / 根据FITS标准，'T'和非零值表示true，'F'和零值表示false
+                                    const boolValue = rawByte === 84 || (rawByte !== 0 && rawByte !== 70);  // 84 is ASCII for 'T', 70 is ASCII for 'F' / 84是'T'的ASCII码，70是'F'的ASCII码
                                     if (column.isString) {
                                         column.data[row] = boolValue ? 'True' : 'False';
                                     } else {
                                         column.data[dataIndex] = boolValue;
                                     }
-                                    continue;  // 跳过value赋值
-                                case 'X': // Bit
-                                    // 对于位数据类型，需要特殊处理
-                                    // 在FITS中，位数据是按字节存储的，每个字节包含8个位
-                                    // 我们需要计算当前位在哪个字节，以及在字节中的位置
+                                    continue;  // Skip value assignment / 跳过value赋值
+                                case 'X': // Bit / 位
+                                    // For bit data type, special handling is needed / 对于位数据类型，需要特殊处理
+                                    // In FITS, bit data is stored in bytes, each byte contains 8 bits / 在FITS中，位数据是按字节存储的，每个字节包含8个位
+                                    // We need to calculate which byte contains the current bit and its position in the byte / 我们需要计算当前位在哪个字节，以及在字节中的位置
                                     const byteIndex = Math.floor(r / 8);
                                     const bitIndex = r % 8;
                                     
-                                    // 读取包含该位的字节
+                                    // Read the byte containing this bit / 读取包含该位的字节
                                     const byteValue = this.buffer.readInt8();
                                     
-                                    // 提取特定位的值 (从最高有效位开始)
+                                    // Extract the specific bit value (starting from most significant bit) / 提取特定位的值 (从最高有效位开始)
                                     value = (byteValue & (1 << (7 - bitIndex))) ? 1 : 0;
                                     
-                                    // 如果不是最后一位，需要回退位置以便下一次读取同一个字节
+                                    // If not the last bit, need to move back position for next read / 如果不是最后一位，需要回退位置以便下一次读取同一个字节
                                     if (bitIndex < 7 && r < column.repeatCount - 1) {
                                         this.buffer.seek(this.buffer.getPosition() - 1);
                                     }
                                     break;
-                                case 'B': // Unsigned byte
+                                case 'B': // Unsigned byte / 无符号字节
                                     value = this.buffer.readInt8();
-                                    // 确保无符号解释
+                                    // Ensure unsigned interpretation / 确保无符号解释
                                     if (value < 0) value += 256;
                                     break;
-                                case 'I': // 16-bit integer
+                                case 'I': // 16-bit integer / 16位整数
                                     value = this.buffer.readInt16();
                                     break;
-                                case 'J': // 32-bit integer
+                                case 'J': // 32-bit integer / 32位整数
                                     value = this.buffer.readInt32();
                                     break;
-                                case 'K': // 64-bit integer
-                                    // 使用readInt64方法读取64位整数
+                                case 'K': // 64-bit integer / 64位整数
+                                    // Use readInt64 method to read 64-bit integer / 使用readInt64方法读取64位整数
                                     value = this.buffer.readInt64();
                                     break;
-                                case 'A': // Character
-                                    // 读取完整的字符串
+                                case 'A': // Character / 字符
+                                    // Read complete string / 读取完整的字符串
                                     const rawStr = this.buffer.readString(column.repeatCount);
-                                    // 只清理末尾的控制字符和不可见字符
+                                    // Only clean trailing control characters and invisible characters / 只清理末尾的控制字符和不可见字符
                                     const strValue = rawStr.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]+$/, '');
-                                    // 直接存储处理后的字符串
+                                    // Store processed string directly / 直接存储处理后的字符串
                                     if (column.isString) {
                                         column.data[row] = strValue;
                                     }
-                                    // 跳过已处理的字符
+                                    // Skip processed characters / 跳过已处理的字符
                                     r += column.repeatCount - 1;
-                                    continue;  // 使用continue跳过value的赋值
-                                case 'E': // Single-precision floating point
+                                    continue;  // Skip value assignment / 使用continue跳过value的赋值
+                                case 'E': // Single-precision floating point / 单精度浮点数
                                     value = this.buffer.readFloat32();
                                     break;
-                                case 'D': // Double-precision floating point
+                                case 'D': // Double-precision floating point / 双精度浮点数
                                     value = this.buffer.readFloat64();
                                     break;
-                                case 'C': // Single-precision complex
-                                    // 读取实部和虚部，但只存储实部
+                                case 'C': // Single-precision complex / 单精度复数
+                                    // Read real and imaginary parts, but only store real part / 读取实部和虚部，但只存储实部
                                     const realC = this.buffer.readFloat32();
                                     const imagC = this.buffer.readFloat32();
-                                    value = realC; // 只存储实部
+                                    value = realC; // Only store real part / 只存储实部
                                     break;
-                                case 'M': // Double-precision complex
-                                    // 读取实部和虚部，但只存储实部
+                                case 'M': // Double-precision complex / 双精度复数
+                                    // Read real and imaginary parts, but only store real part / 读取实部和虚部，但只存储实部
                                     const realM = this.buffer.readFloat64();
                                     const imagM = this.buffer.readFloat64();
-                                    value = realM; // 只存储实部
+                                    value = realM; // Only store real part / 只存储实部
                                     break;
-                                case 'P': // Array Descriptor (32-bit)
-                                    // 读取两个32位整数，但只存储第一个
+                                case 'P': // Array Descriptor (32-bit) / 数组描述符(32位)
+                                    // Read two 32-bit integers, but only store the first one / 读取两个32位整数，但只存储第一个
                                     const p1 = this.buffer.readInt32();
                                     const p2 = this.buffer.readInt32();
                                     value = p1;
                                     break;
-                                case 'Q': // Array Descriptor (64-bit)
-                                    // 读取两个64位整数，但只存储第一个
+                                case 'Q': // Array Descriptor (64-bit) / 数组描述符(64位)
+                                    // Read two 64-bit integers, but only store the first one / 读取两个64位整数，但只存储第一个
                                     const q1 = this.buffer.readFloat64();
                                     const q2 = this.buffer.readFloat64();
                                     value = q1;
@@ -893,45 +890,45 @@ export class FITSParser {
                                 column.data[dataIndex] = value;
                             }
                         } catch (error) {
-                            console.error(`读取数据出错: 列=${name}, 行=${row}, 重复=${r}`, error);
+                            console.error(`Error reading data: column=${name}, row=${row}, repeat=${r}`, error);
                             throw error;
                         }
                     }
                 }
 
-                // 输出进度
+                // Output progress / 输出进度
                 if (row % 1000 === 0 || row === naxis2 - 1) {
-                    console.log(`处理进度: ${((row + 1) / naxis2 * 100).toFixed(1)}%`);
+                    console.log(`Progress: ${((row + 1) / naxis2 * 100).toFixed(1)}%`);
                 }
             }
 
-            // 输出每列的一些示例数据
+            // Output sample data for each column / 输出每列的示例数据
             for (const [name, column] of columns) {
                 if (column.isString) {
-                    // 对于字符串类型，输出字符串值
-                    console.log(`列 ${name} 的前10个数据:`, column.data.slice(0, 10));
+                    // For string type, output string values / 对于字符串类型，输出字符串值
+                    console.log(`First 10 data for column ${name}:`, column.data.slice(0, 10));
                 } else if (column.dataType === 'L') {
-                    // 对于布尔类型，需要特殊处理数组情况
+                    // For boolean type, handle array case specially / 对于布尔类型，需要特殊处理数组情况
                     const sampleData = column.repeatCount === naxis2 ?
                         column.data.slice(0, 10) :
                         Array.from({ length: Math.min(10, naxis2) }, (_, i) => 
                             column.data.slice(i * column.repeatCount, (i + 1) * column.repeatCount));
-                    console.log(`列 ${name} 的前10个数据:`, sampleData);
+                    console.log(`First 10 data for column ${name}:`, sampleData);
                 } else {
-                    // 对于数值类型，需要特殊处理数组情况
+                    // For numeric type, handle array case specially / 对于数值类型，需要特殊处理数组情况
                     const sampleData = column.repeatCount === naxis2 ?
                         Array.from(column.data.slice(0, 10)) :
                         Array.from({ length: Math.min(10, naxis2) }, (_, i) => 
                             Array.from(column.data.slice(i * column.repeatCount, (i + 1) * column.repeatCount)));
-                    console.log(`列 ${name} 的前10个数据:`, sampleData);
+                    console.log(`First 10 data for column ${name}:`, sampleData);
                 }
             }
 
-            // 创建一个包含所有列数据的Map
+            // Create a Map containing all column data / 创建包含所有列数据的Map
             const columnsData = new Map<string, ColumnData>();
             for (const [name, column] of columns) {
                 if (column.dataType === 'L') {
-                    // 对于布尔类型，创建 BooleanColumnData
+                    // For boolean type, create BooleanColumnData / 对于布尔类型，创建BooleanColumnData
                     const booleanColumn: BooleanColumnData = {
                         name: column.name,
                         data: column.repeatCount === naxis2 ? 
@@ -951,10 +948,10 @@ export class FITSParser {
                     };
                     columnsData.set(name, booleanColumn);
                 } else if (column.isString) {
-                    // 对于字符串类型，创建 StringColumnData
+                    // For string type, create StringColumnData / 对于字符串类型，创建StringColumnData
                     const stringColumn: StringColumnData = {
                         name: column.name,
-                        data: column.data as string[],  // 字符串类型已经正确处理了repeatCount
+                        data: column.data as string[],  // String type has already handled repeatCount / 字符串类型已经正确处理了repeatCount
                         format: column.format,
                         unit: column.unit,
                         dataType: column.dataType,
@@ -965,12 +962,12 @@ export class FITSParser {
                     };
                     columnsData.set(name, stringColumn);
                 } else {
-                    // 对于数值类型，创建 NumericColumnData
+                    // For numeric type, create NumericColumnData / 对于数值类型，创建NumericColumnData
                     const numericColumn: NumericColumnData = {
                         name: column.name,
                         data: column.repeatCount === naxis2 ?
                             column.data as Float32Array :
-                            new Float32Array(column.data as Float32Array),  // 保持原始数据结构
+                            new Float32Array(column.data as Float32Array),  // Keep original data structure / 保持原始数据结构
                         format: column.format,
                         unit: column.unit,
                         dataType: column.dataType,
@@ -979,7 +976,7 @@ export class FITSParser {
                             if (this.repeatCount === naxis2) {
                                 return this.data[index];
                             } else {
-                                // 返回该行的所有数据
+                                // Return all data for this row / 返回该行的所有数据
                                 return Array.from(this.data.slice(
                                     index * this.repeatCount, 
                                     (index + 1) * this.repeatCount
@@ -991,7 +988,7 @@ export class FITSParser {
                 }
             }
 
-            // 为了保持向后兼容，我们仍然返回第一列数据作为主数据
+            // For backward compatibility, we still return first column data as main data / 为了保持向后兼容，我们仍然返回第一列数据作为主数据
             const firstColumn = Array.from(columns.values())[0];
             if (!firstColumn) {
                 const emptyResult = new Float32Array(0) as TableResult;
@@ -1003,13 +1000,13 @@ export class FITSParser {
                 return emptyResult;
             }
 
-            // 创建基础数组，确保长度正确
+            // Create base array with correct length / 创建基础数组，确保长度正确
             const baseArray = firstColumn.repeatCount === naxis2 ?
                 new Float32Array(firstColumn.data) :
                 new Float32Array(naxis2);
             const result = baseArray as TableResult;
             
-            // 添加额外的属性
+            // Add additional properties / 添加额外的属性
             Object.defineProperties(result, {
                 columns: { value: columnsData, writable: true },
                 getColumnValue: {
@@ -1032,10 +1029,10 @@ export class FITSParser {
             return result;
 
         } catch (error) {
-            console.error('解析二进制表格数据时出错:', error);
+            console.error('Error parsing binary table data:', error);
             if (error instanceof Error) {
-                console.error('错误详情:', error.message);
-                console.error('调用栈:', error.stack);
+                console.error('Error details:', error.message);
+                console.error('Stack trace:', error.stack);
             }
             const errorResult = new Float32Array(0) as TableResult;
             Object.defineProperties(errorResult, {
@@ -1048,20 +1045,20 @@ export class FITSParser {
     }
 
     private parseAsciiTable(offset: number, header: FITSHeader, availableBytes: number): TableResult {
-        if (!this.buffer) throw new Error('Buffer未初始化');
+        if (!this.buffer) throw new Error('Buffer not initialized');
         
-        console.log('开始解析ASCII表格数据');
-        console.log('数据起始偏移量:', offset);
-        console.log('可用字节数:', availableBytes);
+        console.log('Start parsing ASCII table data');
+        console.log('Data start offset:', offset);
+        console.log('Available bytes:', availableBytes);
         
         const naxis1 = header.getItem('NAXIS1')?.value;
         const naxis2 = header.getItem('NAXIS2')?.value;
         const tfields = header.getItem('TFIELDS')?.value;
         
-        console.log(`NAXIS1 (行长度) = ${naxis1}, NAXIS2 (行数) = ${naxis2}, TFIELDS (字段数) = ${tfields}`);
+        console.log(`NAXIS1 (row length) = ${naxis1}, NAXIS2 (rows) = ${naxis2}, TFIELDS (fields) = ${tfields}`);
         
         if (!naxis1 || !naxis2 || !tfields) {
-            console.error('ASCII表格缺少必要的头信息');
+            console.error('Missing required header information for ASCII table');
             const errorResult = new Float32Array(0) as TableResult;
             Object.defineProperties(errorResult, {
                 columns: { value: new Map(), writable: true },
@@ -1071,10 +1068,10 @@ export class FITSParser {
             return errorResult;
         }
 
-        // 解析列信息
+        // Parse column information / 解析列信息
         const columns = new Map<string, ColumnInfo>();
         
-        // 首先收集所有列的信息
+        // First collect all column information / 首先收集所有列的信息
         for (let i = 1; i <= tfields; i++) {
             const tform = header.getItem(`TFORM${i}`)?.value;
             const ttype = header.getItem(`TTYPE${i}`)?.value || `COL${i}`;
@@ -1082,14 +1079,14 @@ export class FITSParser {
             const tbcol = header.getItem(`TBCOL${i}`)?.value;
             
             if (!tform || !tbcol) {
-                console.error(`缺少TFORM${i}或TBCOL${i}定义`);
+                console.error(`Missing TFORM${i} or TBCOL${i} definition`);
                 continue;
             }
             
-            // 解析TFORM格式
+            // Parse TFORM format / 解析TFORM格式
             const formatMatch = tform.trim().match(/^([A-Z])(\d+)(\.(\d+))?$/);
             if (!formatMatch) {
-                console.error(`无效的TFORM${i}格式: ${tform}`);
+                console.error(`Invalid TFORM${i} format: ${tform}`);
                 continue;
             }
             
@@ -1097,30 +1094,30 @@ export class FITSParser {
             const width = parseInt(formatMatch[2]);
             const precision = formatMatch[4] ? parseInt(formatMatch[4]) : 0;
             
-            // 确定数据类型和对应的数组类型
+            // Determine data type and corresponding array type / 确定数据类型和对应的数组类型
             let ArrayType: any;
             let isString = false;
             
             switch (dataType) {
-                case 'I':  // Integer
+                case 'I':  // Integer / 整数
                     ArrayType = Int32Array;
                     break;
-                case 'F':  // Fixed-point
-                case 'E':  // Exponential floating-point
+                case 'F':  // Fixed-point / 定点数
+                case 'E':  // Exponential floating-point / 指数浮点数
                     ArrayType = Float32Array;
                     break;
-                case 'D':  // Double-precision floating-point
+                case 'D':  // Double-precision floating-point / 双精度浮点数
                     ArrayType = Float64Array;
                     break;
-                case 'A':  // Character
+                case 'A':  // Character / 字符
                     isString = true;
                     break;
                 default:
-                    console.warn(`不支持的数据类型: ${dataType}`);
+                    console.warn(`Unsupported data type: ${dataType}`);
                     continue;
             }
 
-            // 创建列数据数组
+            // Create column data array / 创建列数据数组
             const columnData = isString ? new Array(naxis2) : new ArrayType(naxis2);
 
             columns.set(ttype, {
@@ -1128,8 +1125,8 @@ export class FITSParser {
                 format: tform,
                 unit: tunit,
                 dataType,
-                repeatCount: 1,  // ASCII表格每个字段只有一个值
-                byteOffset: tbcol - 1,  // FITS的TBCOL是1-based
+                repeatCount: 1,  // ASCII table has only one value per field / ASCII表格每个字段只有一个值
+                byteOffset: tbcol - 1,  // FITS TBCOL is 1-based / FITS的TBCOL是1-based
                 byteSize: width,
                 data: columnData,
                 isString
@@ -1137,10 +1134,10 @@ export class FITSParser {
         }
 
         try {
-            // 读取每一行的数据
+            // Read data for each row / 读取每一行的数据
             const rowBuffer = new Uint8Array(naxis1);
             for (let row = 0; row < naxis2; row++) {
-                // 读取整行数据
+                // Read entire row data / 读取整行数据
                 const rowStart = offset + row * naxis1;
                 this.buffer.seek(rowStart);
                 
@@ -1148,20 +1145,20 @@ export class FITSParser {
                     rowBuffer[i] = this.buffer.readInt8();
                 }
                 
-                // 处理每一列
+                // Process each column / 处理每一列
                 for (const [name, column] of columns) {
                     const fieldStart = column.byteOffset;
                     const fieldEnd = fieldStart + column.byteSize;
                     
-                    // 提取字段文本
+                    // Extract field text / 提取字段文本
                     const fieldText = new TextDecoder().decode(rowBuffer.slice(fieldStart, fieldEnd)).trim();
                     
                     try {
                         if (column.isString) {
-                            // 字符串类型直接存储
+                            // Store string type directly / 字符串类型直接存储
                             column.data[row] = fieldText;
                         } else {
-                            // 数值类型需要解析
+                            // Parse numeric types / 数值类型需要解析
                             const value = column.dataType === 'I' ? 
                                 parseInt(fieldText) : 
                                 parseFloat(fieldText);
@@ -1169,27 +1166,27 @@ export class FITSParser {
                             if (!isNaN(value)) {
                                 column.data[row] = value;
                             } else {
-                                console.warn(`无法解析值: ${fieldText} (列=${name}, 行=${row})`);
+                                console.warn(`Cannot parse value: ${fieldText} (column=${name}, row=${row})`);
                                 column.data[row] = 0;
                             }
                         }
                     } catch (error) {
-                        console.error(`解析数据出错: 列=${name}, 行=${row}, 文本=${fieldText}`, error);
+                        console.error(`Error parsing data: column=${name}, row=${row}, text=${fieldText}`, error);
                         column.data[row] = column.isString ? '' : 0;
                     }
                 }
 
-                // 输出进度
+                // Output progress / 输出进度
                 if (row % 1000 === 0 || row === naxis2 - 1) {
-                    console.log(`处理进度: ${((row + 1) / naxis2 * 100).toFixed(1)}%`);
+                    console.log(`Progress: ${((row + 1) / naxis2 * 100).toFixed(1)}%`);
                 }
             }
 
-            // 创建列数据Map
+            // Create column data Map / 创建列数据Map
             const columnsData = new Map<string, ColumnData>();
             for (const [name, column] of columns) {
                 if (column.isString) {
-                    // 对于字符串类型，创建 StringColumnData
+                    // For string type, create StringColumnData / 对于字符串类型，创建StringColumnData
                     const stringColumn: StringColumnData = {
                         name: column.name,
                         data: column.data as string[],
@@ -1203,7 +1200,7 @@ export class FITSParser {
                     };
                     columnsData.set(name, stringColumn);
                 } else {
-                    // 对于数值类型，创建 NumericColumnData
+                    // For numeric type, create NumericColumnData / 对于数值类型，创建NumericColumnData
                     const numericColumn: NumericColumnData = {
                         name: column.name,
                         data: column.data as Float32Array,
@@ -1219,7 +1216,7 @@ export class FITSParser {
                 }
             }
 
-            // 创建结果数组
+            // Create result array / 创建结果数组
             const firstColumn = Array.from(columns.values())[0];
             if (!firstColumn) {
                 const emptyResult = new Float32Array(0) as TableResult;
@@ -1233,7 +1230,7 @@ export class FITSParser {
 
             const result = new Float32Array(firstColumn.data) as TableResult;
             
-            // 添加额外的属性
+            // Add additional properties / 添加额外的属性
             Object.defineProperties(result, {
                 columns: { value: columnsData, writable: true },
                 getColumnValue: {
@@ -1256,7 +1253,7 @@ export class FITSParser {
             return result;
 
         } catch (error) {
-            console.error('解析ASCII表格时出错:', error);
+            console.error('Error parsing ASCII table:', error);
             throw error;
         }
     }

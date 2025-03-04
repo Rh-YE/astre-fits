@@ -10,45 +10,45 @@ import { WebviewMessageHandler, IWebviewMessageHandler } from './webview/Webview
 import { WebviewService } from './webview/WebviewService';
 import { FITSDataProcessor } from './utils/FITSDataProcessor';
 
-// 定义一个表格字段描述类
+// Table field description class | 表格字段描述类
 class TableField {
     constructor(
-        public readonly index: number,        // 字段索引
-        public readonly repeatCount: number,  // 重复计数
-        public readonly dataType: string,     // 数据类型
-        public readonly byteSize: number      // 字节大小
+        public readonly index: number,        // Field index | 字段索引
+        public readonly repeatCount: number,  // Repeat count | 重复计数
+        public readonly dataType: string,     // Data type | 数据类型
+        public readonly byteSize: number      // Byte size | 字节大小
     ) {}
 
-    // 获取字段总字节数
+    // Get total bytes of field | 获取字段总字节数
     getTotalBytes(): number {
         return this.repeatCount * this.byteSize;
     }
 }
 
-// 定义一个FITS表格解析器类
+// FITS table parser class | FITS表格解析器类
 class FITSTableParser {
-    // 数据类型字节映射表
+    // Data type byte size mapping | 数据类型字节映射表
     private static readonly TYPE_BYTE_SIZES = new Map<string, number>([
-        ['L', 1],  // Logical
-        ['X', 1],  // Bit
-        ['B', 1],  // Unsigned byte
-        ['I', 2],  // 16-bit integer
-        ['J', 4],  // 32-bit integer
-        ['K', 8],  // 64-bit integer
-        ['A', 1],  // Character
-        ['E', 4],  // Single-precision floating point
-        ['D', 8],  // Double-precision floating point
-        ['C', 8],  // Single-precision complex
-        ['M', 16], // Double-precision complex
-        ['P', 8],  // Array Descriptor (32-bit)
-        ['Q', 16], // Array Descriptor (64-bit)
+        ['L', 1],  // Logical | 逻辑型
+        ['X', 1],  // Bit | 位
+        ['B', 1],  // Unsigned byte | 无符号字节
+        ['I', 2],  // 16-bit integer | 16位整数
+        ['J', 4],  // 32-bit integer | 32位整数
+        ['K', 8],  // 64-bit integer | 64位整数
+        ['A', 1],  // Character | 字符
+        ['E', 4],  // Single-precision floating point | 单精度浮点
+        ['D', 8],  // Double-precision floating point | 双精度浮点
+        ['C', 8],  // Single-precision complex | 单精度复数
+        ['M', 16], // Double-precision complex | 双精度复数
+        ['P', 8],  // Array Descriptor (32-bit) | 数组描述符(32位)
+        ['Q', 16], // Array Descriptor (64-bit) | 数组描述符(64位)
     ]);
 
-    // 解析TFORM值
+    // Parse TFORM value | 解析TFORM值
     static parseFormat(tform: string): { repeatCount: number, dataType: string } {
         const match = tform.match(/^(\d*)([A-Z])/);
         if (!match) {
-            throw new Error(`无效的TFORM格式: ${tform}`);
+            throw new Error('Invalid TFORM format');
         }
         return {
             repeatCount: match[1] ? parseInt(match[1]) : 1,
@@ -56,22 +56,21 @@ class FITSTableParser {
         };
     }
 
-    // 获取数据类型的字节大小
+    // Get byte size of data type | 获取数据类型的字节大小
     static getTypeByteSize(dataType: string): number {
         const size = this.TYPE_BYTE_SIZES.get(dataType);
         if (size === undefined) {
-            throw new Error(`未知的数据类型: ${dataType}`);
+            throw new Error('Unknown data type');
         }
         return size;
     }
 }
 
 /**
- * FITS文件查看器提供程序
- * 实现VSCode自定义编辑器接口，提供FITS文件查看功能
+ * FITS file viewer provider | FITS文件查看器提供程序
+ * Implements VSCode custom editor interface to provide FITS file viewing functionality | 实现VSCode自定义编辑器接口，提供FITS文件查看功能
  */
-export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, IWebviewMessageHandler {
-    
+export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, IWebviewMessageHandler {    
     public static register(context: vscode.ExtensionContext): vscode.Disposable {
         const provider = new FitsViewerProvider(context);
         const providerRegistration = vscode.window.registerCustomEditorProvider(
@@ -100,7 +99,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
     ) {
         this.logger = Logger.getInstance();
         this.logger.setLogLevel(LogLevel.INFO);
-        this.logger.info('FitsViewerProvider 已创建');
+        this.logger.info('FitsViewerProvider created');
         
         this.dataManager = FITSDataManager.getInstance(context);
         this.loadingManager = LoadingManager.getInstance();
@@ -112,14 +111,14 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
         openContext: vscode.CustomDocumentOpenContext,
         token: vscode.CancellationToken
     ): Promise<vscode.CustomDocument> {
-        this.logger.info(`正在打开文件: ${uri.fsPath}`);
+        this.logger.info(`Opening file: ${uri.fsPath}`);
         try {
-            // 验证文件是否存在
+            // Verify file exists | 验证文件是否存在
             await vscode.workspace.fs.stat(uri);
-            this.logger.debug('文件存在，继续处理');
+            this.logger.debug('File exists, continue processing');
             return { uri, dispose: () => { } };
         } catch (error) {
-            this.logger.error(`打开文件失败: ${error}`);
+            this.logger.error(`Failed to open file: ${error}`);
             throw error;
         }
     }
@@ -129,61 +128,61 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
         webviewPanel: vscode.WebviewPanel,
         token: vscode.CancellationToken
     ): Promise<void> {
-        this.logger.info('正在解析自定义编辑器');
+        this.logger.info('Resolving custom editor');
         
-        // 配置webview
+        // Configure webview | 配置webview
         this.webviewService.configureWebview(webviewPanel.webview);
         
-        // 设置HTML内容
+        // Set HTML content | 设置HTML内容
         webviewPanel.webview.html = this.webviewService.getHtmlForWebview(webviewPanel.webview);
-        this.logger.debug('已设置webview HTML');
+        this.logger.debug('Webview HTML set');
         
-        // 创建消息处理器
+        // Create message handler | 创建消息处理器
         const messageHandler = new WebviewMessageHandler(this);
         
-        // 处理webview消息
+        // Handle webview messages | 处理webview消息
         webviewPanel.webview.onDidReceiveMessage(message => {
             messageHandler.handleMessage(message, document, webviewPanel);
         });
         
-        // 当编辑器关闭时清除缓存
+        // Clear cache when editor closes | 当编辑器关闭时清除缓存
         webviewPanel.onDidDispose(() => {
             if (document.uri) {
                 this.dataManager.clearCache(document.uri);
                 this.currentFileUri = undefined;
-                this.logger.info(`已清除文件缓存: ${document.uri.fsPath}`);
+                this.logger.info(`Cache cleared for file: ${document.uri.fsPath}`);
             }
         });
     }
 
     /**
-     * 处理webview准备就绪消息
+     * Handle webview ready message | 处理webview准备就绪消息
      */
     async handleWebviewReady(uri: vscode.Uri, webviewPanel: vscode.WebviewPanel): Promise<void> {
-        this.logger.info('Webview已准备好，开始更新数据');
+        this.logger.info('Webview ready, starting data update');
         await this.updateWebview(uri, webviewPanel);
     }
 
     /**
-     * 处理获取像素值消息
+     * Handle get pixel value message | 处理获取像素值消息
      */
     async handleGetPixelValue(uri: vscode.Uri, x: number, y: number, webviewPanel: vscode.WebviewPanel): Promise<void> {
         try {
-            // 获取当前HDU索引
+            // Get current HDU index | 获取当前HDU索引
             const uriString = uri.toString();
             const currentHduIndex = this.currentHDUIndex.get(uriString) || 0;
             
             const hduData = await this.dataManager.getHDUData(uri, currentHduIndex);
             if (!hduData || hduData.type !== HDUType.IMAGE) {
-                throw new Error('无法获取图像数据');
+                throw new Error('Cannot get image data');
             }
             
-            // 检查坐标是否在图像范围内
+            // Check if coordinates are within image bounds | 检查坐标是否在图像范围内
             if (!hduData.width || !hduData.height || x < 0 || x >= hduData.width || y < 0 || y >= hduData.height) {
-                throw new Error('坐标超出图像范围');
+                throw new Error('Coordinates out of image bounds');
             }
             
-            // 计算WCS坐标（如果有）
+            // Calculate WCS coordinates if available | 计算WCS坐标（如果有）
             let wcs1 = '-';
             let wcs2 = '-';
             const header = this.dataManager.getHDUHeader(uri, currentHduIndex);
@@ -205,7 +204,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                 }
             }
             
-            // 发送WCS坐标信息到webview
+            // Send WCS coordinate info to webview | 发送WCS坐标信息到webview
             this.webviewService.postMessage(webviewPanel.webview, {
                 command: 'setWCSValue',
                 wcs1: wcs1,
@@ -213,7 +212,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             });
             
         } catch (error) {
-            this.logger.error('获取WCS坐标时出错:', error);
+            this.logger.error('Error getting WCS coordinates:', error);
             this.webviewService.postMessage(webviewPanel.webview, {
                 command: 'setWCSValue',
                 wcs1: '-',
@@ -223,26 +222,26 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
     }
 
     /**
-     * 处理设置缩放类型消息
+     * Handle set scale type message | 处理设置缩放类型消息
      */
     async handleSetScaleType(uri: vscode.Uri, scaleType: string, webviewPanel: vscode.WebviewPanel): Promise<void> {
         try {
-            // 获取当前HDU索引
+            // Get current HDU index | 获取当前HDU索引
             const uriString = uri.toString();
             const currentHduIndex = this.currentHDUIndex.get(uriString) || 0;
             
             const hduData = await this.dataManager.getHDUData(uri, currentHduIndex);
             if (!hduData || hduData.type !== HDUType.IMAGE) {
-                throw new Error('无法获取图像数据');
+                throw new Error('Cannot get image data');
             }
             
-            // 应用缩放变换
+            // Apply scale transform | 应用缩放变换
             const transformResult = await FITSDataProcessor.applyScaleTransform(
                 hduData,
                 scaleType
             );
             
-            // 创建临时文件
+            // Create temporary file | 创建临时文件
             const metadataBuffer = Buffer.from(JSON.stringify({
                 width: hduData.width,
                 height: hduData.height,
@@ -250,7 +249,6 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                 max: transformResult.max,
                 scaleType: scaleType
             }));
-            
             const headerLengthBuffer = Buffer.alloc(4);
             headerLengthBuffer.writeUInt32LE(metadataBuffer.length, 0);
             
@@ -264,21 +262,21 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             
             const tempFilePath = await this.dataManager.createTempFile(uri, combinedBuffer);
             
-            // 发送文件URI到webview
+            // Send file URI to webview | 发送文件URI到webview
             this.webviewService.sendImageDataFileUri(webviewPanel.webview, vscode.Uri.file(tempFilePath));
             
         } catch (error) {
-            this.logger.error('设置缩放类型时出错:', error);
+            this.logger.error('Error setting scale type:', error);
             this.webviewService.sendLoadingMessage(webviewPanel.webview, 
-                `无法应用缩放: ${error instanceof Error ? error.message : String(error)}`);
+                `Cannot apply scale: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 
     /**
-     * 处理获取头信息消息
+     * Handle get header info message | 处理获取头信息消息
      */
     async handleGetHeaderInfo(uri: vscode.Uri, webviewPanel: vscode.WebviewPanel): Promise<void> {
-        // 获取当前HDU索引
+        // Get current HDU index | 获取当前HDU索引
         const uriString = uri.toString();
         const currentHduIndex = this.currentHDUIndex.get(uriString) || 0;
         
@@ -286,31 +284,31 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
     }
 
     /**
-     * 处理切换HDU消息
+     * Handle switch HDU message | 处理切换HDU消息
      */
     async handleSwitchHDU(uri: vscode.Uri, hduIndex: number, webviewPanel: vscode.WebviewPanel): Promise<void> {
         const uriString = uri.toString();
 
         if (this.loadingManager.isLoading(uriString)) {
-            this.webviewService.sendLoadingMessage(webviewPanel.webview, 'HDU切换中，请稍候...');
+            this.webviewService.sendLoadingMessage(webviewPanel.webview, 'Switching HDU, please wait...');
             return;
         }
 
         try {
-            // 更新当前HDU索引
+            // Update current HDU index | 更新当前HDU索引
             this.currentHDUIndex.set(uriString, hduIndex);
-            this.logger.debug(`切换到HDU ${hduIndex}`);
+            this.logger.debug(`Switched to HDU ${hduIndex}`);
             
             const hduData = await this.dataManager.getHDUData(uri, hduIndex);
             if (!hduData) {
-                throw new Error(`无法获取HDU ${hduIndex} 的数据`);
+                throw new Error(`Cannot get data for HDU ${hduIndex}`);
             }
             
             await this.sendHeaderInfo(uri, webviewPanel, hduIndex);
             
-            // 根据HDU类型处理数据
+            // Process data based on HDU type | 根据HDU类型处理数据
             if (hduData.type === HDUType.IMAGE) {
-                // 显示图像缩放按钮，隐藏光谱列选择器
+                // Show image controls, hide spectrum controls | 显示图像缩放按钮，隐藏光谱列选择器
                 webviewPanel.webview.postMessage({
                     command: 'setControlsVisibility',
                     showImageControls: true,
@@ -319,7 +317,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                 
                 await this.processImageHDU(uri, hduData, webviewPanel);
             } else if (hduData.type === HDUType.BINTABLE || hduData.type === HDUType.TABLE) {
-                // 隐藏图像缩放按钮，显示光谱列选择器
+                // Hide image controls, show spectrum controls | 隐藏图像缩放按钮，显示光谱列选择器
                 webviewPanel.webview.postMessage({
                     command: 'setControlsVisibility',
                     showImageControls: false,
@@ -332,69 +330,69 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             }
             
         } catch (error) {
-            this.logger.error('切换HDU时出错:', error);
+            this.logger.error('Error switching HDU:', error);
             this.webviewService.sendLoadingMessage(webviewPanel.webview, 
-                `切换HDU失败: ${error instanceof Error ? error.message : String(error)}`);
+                `Failed to switch HDU: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 
     /**
-     * 加载FITS文件
+     * Load FITS file | 加载FITS文件
      */
     private async loadFITS(fileUri: vscode.Uri): Promise<FITS> {
-        this.logger.info('开始加载FITS文件...');
+        this.logger.info('Starting to load FITS file...');
         try {
-            // 读取FITS文件
-            this.logger.debug(`尝试读取文件: ${fileUri.fsPath}`);
+            // Read FITS file | 读取FITS文件
+            this.logger.debug(`Trying to read file: ${fileUri.fsPath}`);
             const fitsData = await fs.promises.readFile(fileUri.fsPath);
-            this.logger.debug(`已读取FITS文件，大小: ${fitsData.length} 字节`);
+            this.logger.debug(`FITS file read, size: ${fitsData.length} bytes`);
             
-            this.logger.debug('开始解析FITS数据...');
+            this.logger.debug('Starting to parse FITS data...');
             const parser = new FITSParser();
             const fits = parser.parseFITS(new Uint8Array(fitsData));
-            this.logger.debug('FITS数据解析完成');
+            this.logger.debug('FITS data parsing complete');
             
-            // 加载到数据管理器
-            this.logger.debug('正在加载到数据管理器...');
+            // Load to data manager | 加载到数据管理器
+            this.logger.debug('Loading to data manager...');
             await this.dataManager.loadFITS(fileUri, fits);
             this.currentFileUri = fileUri;
-            this.logger.info('FITS文件加载完成');
+            this.logger.info('FITS file loading complete');
             
             return fits;
         } catch (error) {
-            this.logger.error(`加载FITS文件失败: ${error}`);
+            this.logger.error(`Failed to load FITS file: ${error}`);
             throw error;
         }
     }
 
     /**
-     * 更新webview内容
+     * Update webview content | 更新webview内容
      */
     private async updateWebview(fileUri: vscode.Uri, webviewPanel: vscode.WebviewPanel): Promise<void> {
         const uriString = fileUri.toString();
 
         if (this.loadingManager.isLoading(uriString)) {
-            this.webviewService.sendLoadingMessage(webviewPanel.webview, '文件正在加载中，请稍候...');
+            this.webviewService.sendLoadingMessage(webviewPanel.webview, 'File is loading, please wait...');
             return;
         }
 
         try {
-            this.webviewService.sendLoadingMessage(webviewPanel.webview, '正在解析FITS文件，请稍候...');
+            this.webviewService.sendLoadingMessage(webviewPanel.webview, 'Parsing FITS file, please wait...');
             
             const fits = await this.loadFITS(fileUri);
             
             this.webviewService.sendHDUCount(webviewPanel.webview, this.dataManager.getHDUCount(fileUri));
             
-            // 确定要显示的HDU索引
-            // 如果有扩展HDU（总数>1），则显示第一个扩展HDU（索引为1）
+            // Determine HDU index to display | 确定要显示的HDU索引
+            // If there are extension HDUs (total > 1), show first extension HDU (index 1) | 如果有扩展HDU（总数>1），则显示第一个扩展HDU（索引为1）
             const hduCount = this.dataManager.getHDUCount(fileUri);
             const defaultHduIndex = hduCount > 1 ? 1 : 0;
             
-            // 设置当前HDU索引
+            // Set current HDU index | 设置当前HDU索引
             this.currentHDUIndex.set(uriString, defaultHduIndex);
-            this.logger.debug(`默认显示HDU ${defaultHduIndex}`);
+            this.logger.debug(`Default showing HDU ${defaultHduIndex}`);
             
-            // 发送消息更新HDU选择器的选中状态
+            // Send message to update HDU selector state | 发送消息更新HDU选择器的选中状态
             this.webviewService.postMessage(webviewPanel.webview, {
                 command: 'setSelectedHDU',
                 hduIndex: defaultHduIndex
@@ -404,26 +402,26 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             
             const hduData = await this.dataManager.getHDUData(fileUri, defaultHduIndex);
             if (!hduData) {
-                throw new Error('无法获取HDU数据');
+                throw new Error('Cannot get HDU data');
             }
             
-            // 发送文件名
+            // Send filename | 发送文件名
             const fileName = path.basename(fileUri.fsPath);
             this.webviewService.sendFileName(webviewPanel.webview, fileName);
             
-            // 发送对象名称
+            // Send object name | 发送对象名称
             const header = this.dataManager.getHDUHeader(fileUri, defaultHduIndex);
-            const objectName = header?.getItem('OBJECT')?.value || '未知对象';
+            const objectName = header?.getItem('OBJECT')?.value || 'Unknown Object';
             this.webviewService.sendObjectName(webviewPanel.webview, objectName);
             
-            // 发送头信息摘要
+            // Send header summary | 发送头信息摘要
             if (header) {
                 this.webviewService.sendHeaderSummary(webviewPanel.webview, header.getAllItems());
             }
             
-            // 根据HDU类型处理数据
+            // Process data based on HDU type | 根据HDU类型处理数据
             if (hduData.type === HDUType.IMAGE) {
-                // 显示图像缩放按钮，隐藏光谱列选择器
+                // Show image controls, hide spectrum controls | 显示图像缩放按钮，隐藏光谱列选择器
                 webviewPanel.webview.postMessage({
                     command: 'setControlsVisibility',
                     showImageControls: true,
@@ -432,7 +430,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                 
                 await this.processImageHDU(fileUri, hduData, webviewPanel);
             } else if (hduData.type === HDUType.BINTABLE || hduData.type === HDUType.TABLE) {
-                // 隐藏图像缩放按钮，显示光谱列选择器
+                // Hide image controls, show spectrum controls | 隐藏图像缩放按钮，显示光谱列选择器
                 webviewPanel.webview.postMessage({
                     command: 'setControlsVisibility',
                     showImageControls: false,
@@ -445,23 +443,23 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             }
             
         } catch (error) {
-            this.logger.error('处理FITS文件时出错:', error);
+            this.logger.error('Error processing FITS file:', error);
             this.webviewService.sendLoadingMessage(webviewPanel.webview, 
-                `无法显示FITS图像: ${error instanceof Error ? error.message : String(error)}`);
-            vscode.window.showErrorMessage(`无法打开FITS文件: ${error instanceof Error ? error.message : String(error)}`);
+                `Cannot display FITS image: ${error instanceof Error ? error.message : String(error)}`);
+            vscode.window.showErrorMessage(`Cannot open FITS file: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
     
     /**
-     * 处理图像类型的HDU
+     * Process image type HDU | 处理图像类型的HDU
      */
     private async processImageHDU(fileUri: vscode.Uri, hduData: any, webviewPanel: vscode.WebviewPanel): Promise<void> {
         try {
-            // 检查是否是多维数据
+            // Check if multi-dimensional data | 检查是否是多维数据
             const header = this.dataManager.getHDUHeader(fileUri, 0);
             const naxis = header?.getItem('NAXIS')?.value || 0;
             
-            // 创建元数据对象
+            // Create metadata object | 创建元数据对象
             const metadata: any = {
                 width: hduData.width,
                 height: hduData.height,
@@ -469,43 +467,43 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                 max: hduData.stats.max
             };
             
-            // 如果是3D或更高维度的数据，添加深度信息
+            // Add depth info for 3D or higher dimensional data | 如果是3D或更高维度的数据，添加深度信息
             if (naxis > 2) {
                 const naxis3 = header?.getItem('NAXIS3')?.value || 1;
                 metadata.depth = naxis3;
-                this.logger.debug(`检测到多维数据，深度: ${naxis3}`);
+                this.logger.debug(`Detected multi-dimensional data, depth: ${naxis3}`);
             }
             
-            // 创建临时文件
+            // Create temporary file | 创建临时文件
             const metadataBuffer = Buffer.from(JSON.stringify(metadata));
             
-            // 创建头部长度指示器
+            // Create header length indicator | 创建头部长度指示器
             const headerLengthBuffer = Buffer.alloc(4);
             headerLengthBuffer.writeUInt32LE(metadataBuffer.length, 0);
             
-            // 创建数据缓冲区
+            // Create data buffer | 创建数据缓冲区
             const dataBuffer = Buffer.from(hduData.data.buffer);
             
-            // 合并所有数据
+            // Merge all data | 合并所有数据
             const combinedBuffer = Buffer.concat([
                 headerLengthBuffer,
                 metadataBuffer,
                 dataBuffer
             ]);
             
-            // 创建临时文件
+            // Create temporary file | 创建临时文件
             const tempFilePath = await this.dataManager.createTempFile(fileUri, combinedBuffer);
             
-            // 发送文件URI到webview
+            // Send file URI to webview | 发送文件URI到webview
             this.webviewService.sendImageDataFileUri(webviewPanel.webview, vscode.Uri.file(tempFilePath));
             
         } catch (error) {
-            this.logger.error('创建临时文件时出错:', error);
+            this.logger.error('Error creating temporary file:', error);
             
-            // 如果二进制传输失败，回退到JSON方式
-            this.logger.debug('回退到JSON传输方式');
+            // Fallback to JSON if binary transfer fails | 如果二进制传输失败，回退到JSON方式
+            this.logger.debug('Falling back to JSON transfer method');
             
-            // 检查是否是多维数据
+            // Check if multi-dimensional data | 检查是否是多维数据
             const header = this.dataManager.getHDUHeader(fileUri, 0);
             const naxis = header?.getItem('NAXIS')?.value || 0;
             const rawData: any = {
@@ -516,11 +514,11 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                 max: hduData.stats.max
             };
             
-            // 如果是3D或更高维度的数据，添加深度信息
+            // Add depth info for 3D or higher dimensional data | 如果是3D或更高维度的数据，添加深度信息
             if (naxis > 2) {
                 const naxis3 = header?.getItem('NAXIS3')?.value || 1;
                 rawData.depth = naxis3;
-                this.logger.debug(`检测到多维数据，深度: ${naxis3}`);
+                this.logger.debug(`Detected multi-dimensional data, depth: ${naxis3}`);
             }
             
             this.webviewService.postMessage(webviewPanel.webview, {
@@ -531,13 +529,13 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
     }
     
     /**
-     * 处理表格类型的HDU
+     * Process table type HDU | 处理表格类型的HDU
      */
     private async processTableHDU(hduData: any, webviewPanel: vscode.WebviewPanel): Promise<void> {
         if (hduData.columns) {
-            this.logger.debug('发现列数据，开始处理...');
+            this.logger.debug('Found column data, processing...');
             
-            // 准备列信息数组
+            // Prepare column info array | 准备列信息数组
             const columnsInfo = Array.from(hduData.columns.entries()).map(entry => {
                 const [name, column] = entry as [string, any];
                 return {
@@ -548,14 +546,14 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                 };
             });
 
-            // 检查是否是BINTABLE并尝试查找波长和流量列
+            // Check if BINTABLE and try to find wavelength and flux columns | 检查是否是BINTABLE并尝试查找波长和流量列
             const isBinTable = hduData.type === HDUType.BINTABLE;
             let hasSpectralData = false;
             let wavelengthColumn: string | undefined;
             let fluxColumn: string | undefined;
 
             if (isBinTable) {
-                // 查找波长和流量列（不区分大小写）
+                // Find wavelength and flux columns (case insensitive) | 查找波长和流量列（不区分大小写）
                 for (const [name, column] of hduData.columns) {
                     const columnNameLower = name.toLowerCase();
                     if (columnNameLower.includes('wavelength') || columnNameLower === 'wave' || columnNameLower === 'lambda') {
@@ -567,43 +565,43 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                 hasSpectralData = wavelengthColumn !== undefined && fluxColumn !== undefined;
             }
 
-            // 准备表格数据
+            // Prepare table data | 准备表格数据
             const tableData = {
                 columns: columnsInfo,
                 rows: [] as any[]
             };
 
-            // 获取最大行数
+            // Get maximum row count | 获取最大行数
             const maxRows = Math.max(...columnsInfo.map(col => {
                 const column = hduData.columns?.get(col.name);
                 if (column?.repeatCount === column?.data?.length && typeof column.data[0] === 'number') {
-                    return column.data.length;  // 如果repeatCount等于数据长度且第一个元素是数字，则每个元素都是一行
+                    return column.data.length;  // If repeatCount equals data length and first element is number, each element is a row | 如果repeatCount等于数据长度且第一个元素是数字，则每个元素都是一行
                 }
                 return column?.repeatCount === column?.data?.length ? 1 : 
                     (column?.data?.length || 0) / (column?.repeatCount || 1);
             }));
             
-            // 构建行数据
+            // Build row data | 构建行数据
             for (let i = 0; i < maxRows; i++) {
                 const row: any = {};
                 for (const col of columnsInfo) {
                     const column = hduData.columns.get(col.name);
                     if (column && column.data) {
                         if (column.dataType === 'A' || column.dataType.endsWith('A')) {
-                            // 对于字符串类型，保持完整字符串
+                            // For string type, keep complete string | 对于字符串类型，保持完整字符串
                             const value = column.data[i];
-                            // 去除尾部空格
+                            // Remove trailing spaces | 去除尾部空格
                             row[col.name] = typeof value === 'string' ? value.trimEnd() : value;
                         } else {
-                            // 对于其他类型（如数值类型）
+                            // For other types (like numeric) | 对于其他类型（如数值类型）
                             if (column.repeatCount === column.data.length && typeof column.data[0] === 'number') {
-                                // 如果repeatCount等于数据长度且是数值类型，直接使用该值
+                                // If repeatCount equals data length and is numeric type, use value directly | 如果repeatCount等于数据长度且是数值类型，直接使用该值
                                 row[col.name] = column.data[i];
                             } else if (column.repeatCount === column.data.length) {
-                                // 如果repeatCount等于数据长度但不是数值类型，这是一个单一值
+                                // If repeatCount equals data length but not numeric type, this is a single value | 如果repeatCount等于数据长度但不是数值类型，这是一个单一值
                                 row[col.name] = column.getValue(i);
                             } else {
-                                // 否则，这是一个数组值，需要获取对应的数组片段
+                                // Otherwise, this is an array value, need to get corresponding array segment | 否则，这是一个数组值，需要获取对应的数组片段
                                 const startIdx = i * column.repeatCount;
                                 const endIdx = startIdx + column.repeatCount;
                                 if (startIdx < column.data.length) {
@@ -626,15 +624,15 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                 tableData.rows.push(row);
             }
 
-            // 发送表格数据到webview
+            // Send table data to webview | 发送表格数据到webview
             this.webviewService.postMessage(webviewPanel.webview, {
                 command: 'setTableData',
                 data: tableData
             });
 
-            // 如果是BINTABLE且找到了光谱数据，则显示光谱
+            // If BINTABLE and spectral data found, show spectrum | 如果是BINTABLE且找到了光谱数据，则显示光谱
             if (isBinTable && hasSpectralData) {
-                this.logger.debug('发现光谱数据，准备显示光谱图');
+                this.logger.debug('Found spectral data, preparing to display spectrum');
                 
                 const wavelengthCol = hduData.columns.get(wavelengthColumn!);
                 const fluxCol = hduData.columns.get(fluxColumn!);
@@ -645,7 +643,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                     const wavelengthUnit = wavelengthCol.unit;
                     const fluxUnit = fluxCol.unit;
 
-                    // 发送光谱数据
+                    // Send spectral data | 发送光谱数据
                     this.webviewService.sendSpectrumData(
                         webviewPanel.webview,
                         wavelengthData,
@@ -657,7 +655,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                         fluxColumn
                     );
 
-                    // 设置控件可见性
+                    // Set controls visibility | 设置控件可见性
                     webviewPanel.webview.postMessage({
                         command: 'setControlsVisibility',
                         showImageControls: false,
@@ -665,24 +663,24 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                         showTableButton: true
                     });
                 } else {
-                    this.logger.error('无法获取波长或流量列数据');
-                    this.webviewService.sendLoadingMessage(webviewPanel.webview, '无法显示光谱：无法获取波长或流量列数据');
+                    this.logger.error('Cannot get wavelength or flux column data');
+                    this.webviewService.sendLoadingMessage(webviewPanel.webview, 'Cannot display spectrum: Unable to get wavelength or flux column data');
                 }
             } else {
-                // 显示表格视图
+                // Show table view | 显示表格视图
                 webviewPanel.webview.postMessage({
                     command: 'showTableView',
                     isSpectralData: false
                 });
             }
         } else {
-            this.logger.debug('未找到列数据');
-            this.webviewService.sendLoadingMessage(webviewPanel.webview, '无法显示数据：未找到列数据');
+            this.logger.debug('No column data found');
+            this.webviewService.sendLoadingMessage(webviewPanel.webview, 'Cannot display data: No column data found');
         }
     }
 
     /**
-     * 处理显示表格请求
+     * Handle show table request | 处理显示表格请求
      */
     public async handleShowTable(uri: vscode.Uri, webviewPanel: vscode.WebviewPanel): Promise<void> {
         try {
@@ -690,10 +688,10 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             const hduData = await this.dataManager.getHDUData(uri, hduIndex);
             
             if (!hduData || !hduData.columns) {
-                throw new Error('无法获取表格数据');
+                throw new Error('Cannot get table data');
             }
 
-            // 准备并发送表格数据
+            // Prepare and send table data | 准备并发送表格数据
             const columnsInfo = Array.from(hduData.columns.entries()).map(entry => {
                 const [name, column] = entry as [string, any];
                 return {
@@ -724,7 +722,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                 rows.push(row);
             }
 
-            // 发送显示表格命令
+            // Send show table command | 发送显示表格命令
             webviewPanel.webview.postMessage({
                 command: 'showTableView',
                 data: {
@@ -733,7 +731,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                 }
             });
 
-            // 更新控件可见性
+            // Update controls visibility | 更新控件可见性
             webviewPanel.webview.postMessage({
                 command: 'setControlsVisibility',
                 showImageControls: false,
@@ -742,17 +740,17 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             });
 
         } catch (error) {
-            this.logger.error('显示表格时出错:', error);
+            this.logger.error('Error showing table:', error);
             this.webviewService.sendLoadingMessage(webviewPanel.webview, 
-                `无法显示表格: ${error instanceof Error ? error.message : String(error)}`);
+                `Cannot display table: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 
     /**
-     * 处理未知类型的HDU
+     * Process unknown type HDU | 处理未知类型的HDU
      */
     private async processUnknownHDU(fileUri: vscode.Uri, hduData: any, webviewPanel: vscode.WebviewPanel): Promise<void> {
-        // 对于未知类型，尝试根据维度判断
+        // Try to determine by dimensions for unknown type | 对于未知类型，尝试根据维度判断
         const header = this.dataManager.getHDUHeader(fileUri, 0);
         if (header) {
             const naxis = header.getItem('NAXIS')?.value || 0;
@@ -760,13 +758,13 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             const naxis2 = header.getItem('NAXIS2')?.value || 0;
             
             if (naxis === 1 || (naxis === 2 && (naxis1 === 1 || naxis2 === 1))) {
-                // 可能是一维数据，显示为光谱
+                // Might be one-dimensional data, display as spectrum | 可能是一维数据，显示为光谱
                 const wavelength = Array.from({ length: hduData.data.length }, (_, i) => i);
                 const flux = Array.from(hduData.data).map(value => Number(value));
                 
                 this.webviewService.sendSpectrumData(webviewPanel.webview, wavelength, flux);
             } else {
-                // 尝试作为图像显示
+                // Try to display as image | 尝试作为图像显示
                 this.webviewService.postMessage(webviewPanel.webview, {
                     command: 'setImageData',
                     rawData: {
@@ -782,45 +780,45 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
     }
     
     /**
-     * 发送头信息到webview
+     * Send header information to webview | 发送头信息到webview
      */
     private async sendHeaderInfo(fileUri: vscode.Uri, webviewPanel: vscode.WebviewPanel, hduIndex: number = 0): Promise<void> {
         try {
             const header = this.dataManager.getHDUHeader(fileUri, hduIndex);
             if (!header) {
-                throw new Error('无法获取头信息');
+                throw new Error('Cannot get header information');
             }
             
             const headerItems = header.getAllItems();
             this.webviewService.sendHeaderInfo(webviewPanel.webview, headerItems);
             
         } catch (error) {
-            this.logger.error('发送头信息时出错:', error);
+            this.logger.error('Error sending header info:', error);
             this.webviewService.postMessage(webviewPanel.webview, {
                 command: 'setHeaderInfo',
-                html: `<p class="error">无法获取头信息: ${error instanceof Error ? error.message : String(error)}</p>`
+                html: `<p class="error">Cannot get header info: ${error instanceof Error ? error.message : String(error)}</p>`
             });
         }
     }
 
     /**
-     * 处理更新光谱请求
+     * Handle update spectrum request | 处理更新光谱请求
      */
     public async handleUpdateSpectrum(uri: vscode.Uri, wavelengthColumn: string, fluxColumn: string, webviewPanel: vscode.WebviewPanel): Promise<void> {
-        this.logger.debug(`处理更新光谱请求: 波长列=${wavelengthColumn}, 流量列=${fluxColumn}`);
+        this.logger.debug(`Processing update spectrum request: wavelength=${wavelengthColumn}, flux=${fluxColumn}`);
         
         try {
-            // 获取当前HDU索引
+            // Get current HDU index | 获取当前HDU索引
             const hduIndex = this.currentHDUIndex.get(uri.toString()) || 0;
             
-            // 获取HDU数据
+            // Get HDU data | 获取HDU数据
             const hduData = await this.dataManager.getHDUData(uri, hduIndex);
             if (!hduData || !hduData.columns) {
-                this.logger.error('无法获取HDU数据或列数据');
+                this.logger.error('Cannot get HDU data or columns');
                 return;
             }
             
-            // 准备列信息数组，用于发送到webview
+            // Prepare columns info array for webview | 准备列信息数组用于发送到webview
             const columnsInfo = Array.from(hduData.columns.entries()).map(entry => {
                 const [name, column] = entry as [string, any];
                 return {
@@ -831,22 +829,22 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                 };
             });
             
-            // 获取波长和流量数据
+            // Get wavelength and flux data | 获取波长和流量数据
             let wavelengthData: number[] | undefined;
             let fluxData: number[] | undefined;
             let wavelengthUnit: string | undefined;
             let fluxUnit: string | undefined;
             
-            // 处理波长列
+            // Process wavelength column | 处理波长列
             if (wavelengthColumn === 'pixel') {
-                // 如果选择了"pixel"，创建一个序号数组
+                // Create index array if "pixel" is selected | 如果选择了"pixel"，创建序号数组
                 const fluxCol = hduData.columns.get(fluxColumn);
                 if (fluxCol) {
                     wavelengthData = Array.from({ length: fluxCol.data.length }, (_, i) => i);
                     wavelengthUnit = 'pixel';
                 }
             } else {
-                // 否则，使用选择的列
+                // Use selected column | 使用选择的列
                 const wavelengthCol = hduData.columns.get(wavelengthColumn);
                 if (wavelengthCol) {
                     wavelengthData = Array.from(wavelengthCol.data);
@@ -854,18 +852,18 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                 }
             }
             
-            // 处理流量列
+            // Process flux column | 处理流量列
             const fluxCol = hduData.columns.get(fluxColumn);
             if (fluxCol) {
                 fluxData = Array.from(fluxCol.data);
                 fluxUnit = fluxCol.unit;
             }
             
-            // 发送更新后的光谱数据到webview
+            // Send updated spectrum data to webview | 发送更新后的光谱数据到webview
             if (wavelengthData && fluxData) {
-                this.logger.debug('准备发送更新后的光谱数据到webview');
-                this.logger.debug(`波长数据长度: ${wavelengthData.length}, 单位: ${wavelengthUnit}`);
-                this.logger.debug(`流量数据长度: ${fluxData.length}, 单位: ${fluxUnit}`);
+                this.logger.debug('Preparing to send updated spectrum data to webview');
+                this.logger.debug(`Wavelength data length: ${wavelengthData.length}, unit: ${wavelengthUnit}`);
+                this.logger.debug(`Flux data length: ${fluxData.length}, unit: ${fluxUnit}`);
                 
                 this.webviewService.sendSpectrumData(
                     webviewPanel.webview, 
@@ -878,19 +876,19 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                     fluxColumn
                 );
                 
-                this.logger.debug('更新后的光谱数据已发送到webview');
+                this.logger.debug('Updated spectrum data sent to webview');
             } else {
-                this.logger.error('未能获取有效的波长或流量数据');
-                this.webviewService.sendLoadingMessage(webviewPanel.webview, '无法更新光谱：未找到有效的波长或流量数据');
+                this.logger.error('Could not get valid wavelength or flux data');
+                this.webviewService.sendLoadingMessage(webviewPanel.webview, 'Cannot update spectrum: No valid wavelength or flux data found');
             }
         } catch (error) {
-            this.logger.error(`更新光谱时出错: ${error}`);
-            this.webviewService.sendLoadingMessage(webviewPanel.webview, `更新光谱时出错: ${error}`);
+            this.logger.error(`Error updating spectrum: ${error}`);
+            this.webviewService.sendLoadingMessage(webviewPanel.webview, `Error updating spectrum: ${error}`);
         }
     }
 
     /**
-     * 处理返回光谱请求
+     * Handle return to spectrum request | 处理返回光谱请求
      */
     public async handleReturnToSpectrum(uri: vscode.Uri, webviewPanel: vscode.WebviewPanel): Promise<void> {
         try {
@@ -898,10 +896,10 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             const hduData = await this.dataManager.getHDUData(uri, hduIndex);
             
             if (!hduData || !hduData.columns) {
-                throw new Error('无法获取数据');
+                throw new Error('Cannot get data');
             }
 
-            // 查找波长和流量列
+            // Find wavelength and flux columns | 查找波长和流量列
             let wavelengthColumn: string | undefined;
             let fluxColumn: string | undefined;
 
@@ -915,7 +913,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             }
 
             if (!wavelengthColumn || !fluxColumn) {
-                throw new Error('未找到波长或流量列');
+                throw new Error('Wavelength or flux column not found');
             }
 
             const wavelengthCol = hduData.columns.get(wavelengthColumn);
@@ -927,7 +925,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                 const wavelengthUnit = wavelengthCol.unit;
                 const fluxUnit = fluxCol.unit;
 
-                // 发送光谱数据
+                // Send spectrum data | 发送光谱数据
                 this.webviewService.sendSpectrumData(
                     webviewPanel.webview,
                     wavelengthData,
@@ -944,7 +942,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                     fluxColumn
                 );
 
-                // 设置控件可见性
+                // Set controls visibility | 设置控件可见性
                 webviewPanel.webview.postMessage({
                     command: 'setControlsVisibility',
                     showImageControls: false,
@@ -953,9 +951,9 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                 });
             }
         } catch (error) {
-            this.logger.error('返回光谱时出错:', error);
+            this.logger.error('Error returning to spectrum:', error);
             this.webviewService.sendLoadingMessage(webviewPanel.webview, 
-                `无法返回光谱: ${error instanceof Error ? error.message : String(error)}`);
+                `Cannot return to spectrum: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 } 

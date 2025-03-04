@@ -6,14 +6,14 @@
     <title>FITS 文件查看器</title>
     <link rel="stylesheet" href="theme.css">
     <script type="module">
-        // 等待DOM加载完成
+        // Wait for DOM to load | 等待DOM加载完成
         document.addEventListener('DOMContentLoaded', async () => {
             try {
                 const { vscode, log } = await import('./common.js');
                 const { default: ImageViewer } = await import('./image-viewer.js');
                 const { default: SpectrumViewer } = await import('./spectrum-viewer.js');
                 
-                // 格式化表格中的值
+                // Format table values | 格式化表格中的值
                 function formatValue(value, dataType) {
                     console.log('formatValue input:', {
                         value,
@@ -28,21 +28,21 @@
                         return '';
                     }
 
-                    // 处理布尔类型
+                    // Handle boolean type | 处理布尔类型
                     if (typeof value === 'boolean' || dataType === 'L') {
                         return value.toString();
                     }
                     
-                    // 处理数组类型
+                    // Handle array type | 处理数组类型
                     if (Array.isArray(value) || ArrayBuffer.isView(value)) {
-                        // 如果是TypedArray，转换为普通数组
+                        // Convert TypedArray to normal array | 如果是TypedArray，转换为普通数组
                         const arr = Array.from(value);
                         console.log('Array processing:', {
                             originalValue: value,
                             convertedArray: arr,
                             length: arr.length
                         });
-                        // 对数组中的每个值进行格式化
+                        // Format each value in array | 对数组中的每个值进行格式化
                         return arr.map(v => {
                             if (typeof v === 'number') {
                                 return Number.isInteger(v) ? v.toString() : v.toFixed(6);
@@ -51,33 +51,33 @@
                         }).join(', ');
                     }
                     
-                    // 处理字符串类型
+                    // Handle string type | 处理字符串类型
                     if (dataType === 'A' || dataType.startsWith('A')) {
                         return value.toString().trim();
                     }
                     
-                    // 处理数值类型
+                    // Handle numeric type | 处理数值类型
                     if (typeof value === 'number') {
-                        // 对于非整数，保留6位小数
+                        // Keep 6 decimal places for non-integers | 对于非整数，保留6位小数
                         return Number.isInteger(value) ? value.toString() : value.toFixed(6);
                     }
                     
                     return value.toString();
                 }
 
-                // 表格排序功能
+                // Table sorting functionality | 表格排序功能
                 let currentSortColumn = null;
                 let isAscending = true;
 
                 function sortTable(columnName) {
                     const headers = document.querySelectorAll('#fits-table th');
                     
-                    // 移除所有排序标记
+                    // Remove all sort markers | 移除所有排序标记
                     headers.forEach(header => {
                         header.classList.remove('sorted-asc', 'sorted-desc');
                     });
                     
-                    // 如果点击的是当前排序列，则反转排序方向
+                    // Reverse sort direction if clicking current sort column | 如果点击的是当前排序列，则反转排序方向
                     if (columnName === currentSortColumn) {
                         isAscending = !isAscending;
                     } else {
@@ -85,82 +85,82 @@
                         isAscending = true;
                     }
                     
-                    // 添加排序标记
+                    // Add sort marker | 添加排序标记
                     const header = document.querySelector(`th[data-column="${columnName}"]`);
                     header.classList.add(isAscending ? 'sorted-asc' : 'sorted-desc');
 
-                    // 获取列的数据类型
+                    // Get column data type | 获取列的数据类型
                     const dataType = header.getAttribute('data-type');
                     
-                    // 对所有数据进行排序
+                    // Sort all data | 对所有数据进行排序
                     window.tableState.allRows.sort((a, b) => {
                         const aValue = a[columnName];
                         const bValue = b[columnName];
                         
-                        // 处理空值
+                        // Handle null values | 处理空值
                         if (aValue === null || aValue === undefined) return isAscending ? -1 : 1;
                         if (bValue === null || bValue === undefined) return isAscending ? 1 : -1;
                         
-                        // 根据数据类型进行比较
-                        if (dataType === 'L') {  // 布尔类型
+                        // Compare based on data type | 根据数据类型进行比较
+                        if (dataType === 'L') {  // Boolean type | 布尔类型
                             return isAscending ? 
                                 aValue === bValue ? 0 : aValue ? 1 : -1 :
                                 aValue === bValue ? 0 : aValue ? -1 : 1;
                         }
                         
-                        // 数值类型比较
+                        // Numeric comparison | 数值类型比较
                         if (typeof aValue === 'number' && typeof bValue === 'number') {
                             return isAscending ? aValue - bValue : bValue - aValue;
                         }
                         
-                        // 尝试数字比较（字符串形式的数字）
+                        // Try numeric comparison for string numbers | 尝试数字比较（字符串形式的数字）
                         const aNum = parseFloat(aValue);
                         const bNum = parseFloat(bValue);
                         if (!isNaN(aNum) && !isNaN(bNum)) {
                             return isAscending ? aNum - bNum : bNum - aNum;
                         }
                         
-                        // 字符串比较
+                        // String comparison | 字符串比较
                         return isAscending ? 
                             String(aValue).localeCompare(String(bValue)) : 
                             String(bValue).localeCompare(String(aValue));
                     });
                     
-                    // 重新渲染当前页
+                    // Re-render current page | 重新渲染当前页
                     renderCurrentPage();
                 }
 
-                // 处理表格数据
+                // Process table data | 处理表格数据
                 function processTableData(data) {
                     console.log('Processing table data:', data);
                     const { columns, rows } = data;
                     
-                    // 清空表头和表体
+                    // Clear header and body | 清空表头和表体
                     const thead = document.querySelector('#fits-table thead tr');
                     const tbody = document.querySelector('#fits-table tbody');
                     thead.innerHTML = '';
                     tbody.innerHTML = '';
 
-                    // 添加表头
+                    // Add headers | 添加表头
                     columns.forEach(col => {
                         const th = document.createElement('th');
                         th.textContent = `${col.name}${col.unit ? ` (${col.unit})` : ''}`;
                         th.setAttribute('data-column', col.name);
-                        th.setAttribute('data-type', col.dataType || '');  // 保存数据类型
+                        th.setAttribute('data-type', col.dataType || '');  // Save data type | 保存数据类型
                         th.addEventListener('click', () => sortTable(col.name));
                         thead.appendChild(th);
                     });
 
-                    // 初始化分页状态
+                    // Initialize pagination state | 初始化分页状态
                     window.tableState = {
                         allRows: rows,
-                        columns: columns,  // 保存列信息
+                        columns: columns,  // Save column info | 保存列信息
                         currentPage: 1,
                         rowsPerPage: 1000,
                         totalPages: Math.ceil(rows.length / 1000)
                     };
 
-                    // 如果数据量超过10万行，显示分页控件
+                    // Show pagination controls if over 100k rows | 如果数据量超过10万行，显示分页控件
                     const paginationContainer = document.getElementById('pagination-container');
                     if (rows.length > 100000) {
                         paginationContainer.style.display = 'flex';
@@ -170,11 +170,11 @@
                         window.tableState.rowsPerPage = rows.length;
                     }
 
-                    // 渲染当前页数据
+                    // Render current page data | 渲染当前页数据
                     renderCurrentPage();
                 }
 
-                // 渲染当前页数据
+                // Render current page | 渲染当前页数据
                 function renderCurrentPage() {
                     const { allRows, currentPage, rowsPerPage } = window.tableState;
                     const tbody = document.querySelector('#fits-table tbody');
@@ -184,7 +184,7 @@
                     const endIdx = Math.min(startIdx + rowsPerPage, allRows.length);
                     const currentRows = allRows.slice(startIdx, endIdx);
 
-                    // 获取列信息
+                    // Get column info | 获取列信息
                     const columns = Array.from(document.querySelectorAll('#fits-table thead th')).map(th => ({
                         name: th.getAttribute('data-column'),
                         dataType: th.getAttribute('data-type')
@@ -202,12 +202,12 @@
                         tbody.appendChild(tr);
                     });
 
-                    // 更新分页信息显示
+                    // Update pagination info display | 更新分页信息显示
                     document.getElementById('page-info').textContent = 
                         `第 ${currentPage} 页，共 ${window.tableState.totalPages} 页 (总计 ${allRows.length} 行)`;
                 }
 
-                // 更新分页控件状态
+                // Update pagination controls state | 更新分页控件状态
                 function updatePaginationControls() {
                     const { currentPage, totalPages } = window.tableState;
                     document.getElementById('prev-page').disabled = currentPage === 1;
@@ -216,7 +216,7 @@
                     document.getElementById('total-pages').textContent = totalPages;
                 }
 
-                // 添加分页事件处理
+                // Add pagination event handlers | 添加分页事件处理
                 document.getElementById('prev-page')?.addEventListener('click', () => {
                     if (window.tableState.currentPage > 1) {
                         window.tableState.currentPage--;
@@ -244,20 +244,20 @@
                     }
                 });
 
-                // 初始化图像查看器和光谱查看器
+                // Initialize image viewer and spectrum viewer | 初始化图像查看器和光谱查看器
                 const imageViewer = new ImageViewer();
                 const spectrumViewer = new SpectrumViewer();
                 
-                // 添加容器大小变化监听
+                // Add container resize listener | 添加容器大小变化监听
                 const container = document.querySelector('.image-container');
                 const resizeObserver = new ResizeObserver(entries => {
                     for (const entry of entries) {
-                        // 重新渲染图像
+                        // Re-render image | 重新渲染图像
                         if (imageViewer.currentImageData) {
                             imageViewer.renderWithTransform();
                         }
                         
-                        // 重新渲染光谱
+                        // Re-render spectrum | 重新渲染光谱
                         const spectrumData = document.getElementById('spectrum-canvas').dataset.spectrumData;
                         if (spectrumData) {
                             spectrumViewer.renderSpectrum(JSON.parse(spectrumData), true);
@@ -265,19 +265,19 @@
                     }
                 });
                 
-                // 开始监听容器大小变化
+                // Start observing container size changes | 开始监听容器大小变化
                 resizeObserver.observe(container);
                 
-                // 初始化缩放按钮
+                // Initialize zoom buttons | 初始化缩放按钮
                 document.querySelectorAll('.scale-button').forEach(button => {
                     button.addEventListener('click', () => {
-                        // 移除所有活动按钮
+                        // Remove all active buttons | 移除所有活动按钮
                         document.querySelectorAll('.scale-button').forEach(b => b.classList.remove('active'));
                         
-                        // 激活当前按钮
+                        // Activate current button | 激活当前按钮
                         button.classList.add('active');
                         
-                        // 发送缩放类型到扩展
+                        // Send scale type to extension | 发送缩放类型到扩展
                         const scaleType = button.getAttribute('data-scale');
                         vscode.postMessage({
                             command: 'setScaleType',
@@ -286,14 +286,14 @@
                     });
                 });
                 
-                // 处理顶部区域折叠/展开功能
+                // Handle top area collapse/expand | 处理顶部区域折叠/展开功能
                 const topContainer = document.getElementById('top-container');
                 const collapseButton = document.getElementById('collapse-button');
                 
                 collapseButton.addEventListener('click', () => {
                     topContainer.classList.toggle('collapsed');
                     
-                    // 更新按钮图标
+                    // Update button icon | 更新按钮图标
                     if (topContainer.classList.contains('collapsed')) {
                         collapseButton.textContent = '▼';
                         collapseButton.title = '展开面板';
@@ -302,20 +302,20 @@
                         collapseButton.title = '折叠面板';
                     }
                     
-                    // 触发窗口大小变化事件，以便重新渲染
+                    // Trigger window resize event for re-rendering | 触发窗口大小变化事件，以便重新渲染
                     const event = new Event('resize');
                     window.dispatchEvent(event);
                 });
                 
-                // HDU选择器相关函数
+                // HDU selector related functions | HDU选择器相关函数
                 function updateHDUSelector(count) {
                     const selector = document.getElementById('hdu-selector');
                     
-                    // 移除现有的事件监听器（如果有）
+                    // Remove existing event listeners | 移除现有的事件监听器（如果有）
                     const oldSelector = selector.cloneNode(false);
                     selector.parentNode.replaceChild(oldSelector, selector);
                     
-                    // 使用新的选择器引用
+                    // Use new selector reference | 使用新的选择器引用
                     const newSelector = oldSelector;
                     newSelector.innerHTML = '';
                     
@@ -326,7 +326,7 @@
                         newSelector.appendChild(option);
                     }
                     
-                    // 添加选择事件
+                    // Add selection event | 添加选择事件
                     newSelector.addEventListener('change', () => {
                         const hduIndex = parseInt(newSelector.value);
                         vscode.postMessage({
@@ -336,7 +336,7 @@
                     });
                 }
                 
-                // 导出CSV功能
+                // Export CSV functionality | 导出CSV功能
                 document.getElementById('export-table-button').addEventListener('click', () => {
                     const table = document.getElementById('fits-table');
                     const headers = Array.from(table.querySelectorAll('thead th'))
@@ -357,31 +357,31 @@
                     link.click();
                 });
 
-                // 添加显示表格按钮事件监听
+                // Add show table button event listener | 添加显示表格按钮事件监听
                 document.getElementById('show-table-button').addEventListener('click', () => {
                     vscode.postMessage({
                         command: 'showTable'
                     });
                 });
                 
-                // 返回光谱按钮点击事件
+                // Return spectrum button click event | 返回光谱按钮点击事件
                 document.getElementById('return-spectrum-button')?.addEventListener('click', () => {
-                    // 隐藏表格容器
+                    // Hide table container | 隐藏表格容器
                     document.querySelector('.table-container').style.display = 'none';
-                    // 显示图像容器（因为光谱canvas在图像容器内）
+                    // Show image container | 显示图像容器（因为光谱canvas在图像容器内）
                     document.querySelector('.image-container').style.display = 'flex';
-                    // 显示光谱canvas
+                    // Show spectrum canvas | 显示光谱canvas
                     document.getElementById('spectrum-canvas').style.display = 'block';
-                    // 隐藏图像canvas和占位符
+                    // Hide image canvas and placeholder | 隐藏图像canvas和占位符
                     document.getElementById('fits-canvas').style.display = 'none';
                     document.getElementById('image-placeholder').style.display = 'none';
-                    // 发送返回光谱消息
+                    // Send return to spectrum message | 发送返回光谱消息
                     vscode.postMessage({
                         command: 'returnToSpectrum'
                     });
                 });
                 
-                // 监听来自扩展的消息
+                // Listen for messages from extension | 监听来自扩展的消息
                 window.addEventListener('message', event => {
                     const message = event.data;
                     
@@ -395,7 +395,7 @@
                             break;
                             
                         case 'setHeaderInfo':
-                            // 显示头文件信息
+                            // Show header info | 显示头文件信息
                             if (message.text) {
                                 document.getElementById('header-info').textContent = message.text;
                             } else if (message.html) {
@@ -419,8 +419,8 @@
                             break;
                             
                         case 'setImageDataFromFile':
-                            log(`收到图像数据文件URI: ${message.fileUri}`);
-                            // 保存当前的缩放和平移状态
+                            log(`Received image data file URI | 收到图像数据文件URI: ${message.fileUri}`);
+                            // Save current zoom and pan state | 保存当前的缩放和平移状态
                             const prevZoomLevel = imageViewer.currentImageData ? imageViewer.zoomLevel : null;
                             const prevPanOffsetX = imageViewer.currentImageData ? imageViewer.panOffsetX : null;
                             const prevPanOffsetY = imageViewer.currentImageData ? imageViewer.panOffsetY : null;
@@ -432,7 +432,7 @@
                             
                         case 'setImageData':
                             if (message.rawData) {
-                                // 保存当前的缩放和平移状态
+                                // Save current zoom and pan state | 保存当前的缩放和平移状态
                                 const prevZoomLevel = imageViewer.currentImageData ? imageViewer.zoomLevel : null;
                                 const prevPanOffsetX = imageViewer.currentImageData ? imageViewer.panOffsetX : null;
                                 const prevPanOffsetY = imageViewer.currentImageData ? imageViewer.panOffsetY : null;
@@ -441,7 +441,7 @@
                                 
                                 imageViewer.loadImageData(message.rawData, prevZoomLevel, prevPanOffsetX, prevPanOffsetY, prevWidth, prevHeight);
                             } else {
-                                // 显示错误信息
+                                // Show error message | 显示错误信息
                                 document.getElementById('fits-canvas').style.display = 'none';
                                 const imagePlaceholder = document.getElementById('image-placeholder');
                                 imagePlaceholder.style.display = 'block';
@@ -458,64 +458,64 @@
                             break;
                             
                         case 'showSpectrum':
-                            log('收到显示光谱的命令');
-                            // 隐藏表格容器
+                            log('Received show spectrum command | 收到显示光谱的命令');
+                            // Hide table container | 隐藏表格容器
                             document.querySelector('.table-container').style.display = 'none';
-                            // 显示图像容器
+                            // Show image container | 显示图像容器
                             document.querySelector('.image-container').style.display = 'flex';
-                            // 显示光谱canvas，隐藏其他
+                            // Show spectrum canvas, hide others | 显示光谱canvas，隐藏其他
                             document.getElementById('fits-canvas').style.display = 'none';
                             document.getElementById('spectrum-canvas').style.display = 'block';
                             document.getElementById('image-placeholder').style.display = 'none';
                             
-                            // 隐藏表格操作按钮
+                            // Hide table operation buttons | 隐藏表格操作按钮
                             document.querySelector('.table-button').parentElement.style.display = 'none';
                             
-                            // 清空WCS信息
+                            // Clear WCS info | 清空WCS信息
                             document.getElementById('wcs-value-1').textContent = '-';
                             document.getElementById('wcs-value-2').textContent = '-';
                             
-                            // 隐藏图像缩放按钮，显示光谱列选择器
+                            // Hide image scale buttons, show spectrum column selectors | 隐藏图像缩放按钮，显示光谱列选择器
                             document.getElementById('image-scale-buttons').style.display = 'none';
                             document.getElementById('spectrum-column-selectors').style.display = 'flex';
                             
-                            // 如果有可用列信息，填充列选择器
+                            // Fill column selectors if columns available | 如果有可用列信息，填充列选择器
                             if (message.columns && message.columns.length > 0) {
                                 spectrumViewer.availableColumns = message.columns;
                                 spectrumViewer.updateColumnSelectors(message.columns, message.wavelengthColumn, message.fluxColumn);
                             }
                             
-                            // 渲染光谱数据
+                            // Render spectrum data | 渲染光谱数据
                             spectrumViewer.renderSpectrum(message.data);
                             break;
                             
                         case 'setControlsVisibility':
-                            // 设置图像缩放按钮的可见性
+                            // Set image scale buttons visibility | 设置图像缩放按钮的可见性
                             document.getElementById('image-scale-buttons').style.display = 
                                 message.showImageControls ? 'flex' : 'none';
                             
-                            // 设置光谱列选择器的可见性
+                            // Set spectrum column selectors visibility | 设置光谱列选择器的可见性
                             document.getElementById('spectrum-column-selectors').style.display = 
                                 message.showSpectrumControls ? 'flex' : 'none';
                             break;
 
                         case 'setTableData':
-                            // 处理表格数据
+                            // Process table data | 处理表格数据
                             if (message.data) {
                                 processTableData(message.data);
                             }
                             break;
 
                         case 'showTableView':
-                            // 显示表格视图
+                            // Show table view | 显示表格视图
                             document.querySelector('.table-container').style.display = 'flex';
                             document.querySelector('.image-container').style.display = 'none';
                             document.getElementById('fits-canvas').style.display = 'none';
                             document.getElementById('spectrum-canvas').style.display = 'none';
                             document.getElementById('image-placeholder').style.display = 'none';
-                            // 显示表格操作按钮
+                            // Show table operation buttons | 显示表格操作按钮
                             document.querySelector('.table-button').parentElement.style.display = 'flex';
-                            // 隐藏光谱相关控件
+                            // Hide spectrum related controls | 隐藏光谱相关控件
                             document.getElementById('spectrum-column-selectors').style.display = 'none';
                             document.getElementById('image-scale-buttons').style.display = 'none';
 
@@ -523,31 +523,31 @@
                     }
                 });
                 
-                // 通知扩展webview已准备好
+                // Notify extension that webview is ready | 通知扩展webview已准备好
                 vscode.postMessage({
                     command: 'webviewReady'
                 });
             } catch (error) {
-                console.error('初始化失败:', error);
+                console.error('Initialization failed | 初始化失败:', error);
             }
         });
     </script>
 </head>
 <body>
-    <!-- 顶部区域容器 -->
+    <!-- Top area container | 顶部区域容器 -->
     <div class="top-container" id="top-container">
-        <!-- 折叠按钮 -->
+        <!-- Collapse button | 折叠按钮 -->
         <div class="collapse-button" id="collapse-button">▲</div>
         
-        <!-- 第二行：信息显示区 -->
+        <!-- Second row: Info display area | 第二行：信息显示区 -->
         <div class="info-panel">
             <div class="info-left">
                 
-                <!-- 像素值信息 -->
+                <!-- Pixel value info | 像素值信息 -->
                 <div class="info-label" style="text-align: left;">Value:</div>
                 <div class="info-value" id="pixel-value">-</div>
                 
-                <!-- WCS坐标 -->
+                <!-- WCS coordinates | WCS坐标 -->
                 <div class="info-value" id="wcs-coords-container">
                     <span class="info-label" style="text-align: left;">WCS1:</span>
                     <span class="info-value" id="wcs-value-1">-</span>
@@ -555,7 +555,7 @@
                     <span class="info-value" id="wcs-value-2">-</span>
                 </div>
                 
-                <!-- 图像坐标 -->
+                <!-- Image coordinates | 图像坐标 -->
                 <div class="info-value" id="image-coords-container">
                     <span class="info-label">X:</span>
                     <span class="info-value" id="image-coords-x">-</span>
@@ -563,7 +563,7 @@
                     <span class="info-value" id="image-coords-y">-</span>
                 </div>
                 
-                <!-- 通道切换选项 -->
+                <!-- Channel switch options | 通道切换选项 -->
                 <div class="info-value" id="channel-selector-container" style="display: none;">
                     <div style="display: flex; align-items: center; margin-top: 5px;">
                         <span class="info-label">通道:</span>
@@ -591,17 +591,17 @@
             </div>
         </div>
         
-        <!-- 控制区容器 -->
+        <!-- Controls container | 控制区容器 -->
         <div class="controls-container">
-            <!-- 第三行：缩放控制区 -->
+            <!-- Third row: Scale controls | 第三行：缩放控制区 -->
             <div class="scale-controls">
-                <!-- 表格操作按钮 -->
+                <!-- Table operation buttons | 表格操作按钮 -->
                 <div style="display: flex; align-items: center; margin-right: 15px;">
                     <button id="export-table-button" class="table-button">导出CSV</button>
                     <button id="return-spectrum-button" class="table-button" style="margin-left: 10px;">返回光谱</button>
                 </div>
 
-                <!-- 图像缩放按钮组 -->
+                <!-- Image scale buttons group | 图像缩放按钮组 -->
                 <div id="image-scale-buttons" class="scale-buttons-group">
                     <div class="scale-button active" data-scale="linear">linear</div>
                     <div class="scale-button" data-scale="log">log</div>
@@ -615,7 +615,7 @@
                     <div class="scale-button" data-scale="zscale">zscale</div>
                 </div>
                 
-                <!-- 光谱列选择器 - 默认隐藏 -->
+                <!-- Spectrum column selectors - hidden by default | 光谱列选择器 - 默认隐藏 -->
                 <div id="spectrum-column-selectors" class="spectrum-controls" style="display: none;">
                     <div style="display: flex; align-items: center; margin-right: 15px;">
                         <span style="margin-right: 5px; color: var(--vscode-foreground);">波长: </span>
@@ -635,7 +635,7 @@
                     </div>
                 </div>
                 
-                <!-- HDU选择器 -->
+                <!-- HDU selector | HDU选择器 -->
                 <div style="margin-left: auto; display: flex; align-items: center;">
                     <span style="margin-right: 10px; color: var(--vscode-foreground);">HDU: </span>
                     <select id="hdu-selector" style="background-color: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); border: 1px solid var(--vscode-dropdown-border); padding: 3px; border-radius: 2px;">
@@ -646,7 +646,7 @@
         </div>
     </div>
     
-    <!-- 第四行：图像/表格显示区 -->
+    <!-- Fourth row: Image/Table display area | 第四行：图像/表格显示区 -->
     <div class="image-container">
         <canvas id="fits-canvas" class="image-display"></canvas>
         <canvas id="spectrum-canvas" class="spectrum-display" style="display: none;"></canvas>
@@ -655,11 +655,11 @@
         <div id="zoom-indicator" class="zoom-indicator" style="display: none;">缩放: 100%</div>
     </div>
     
-    <!-- 添加状态栏 -->
+    <!-- Add status bar | 添加状态栏 -->
     <div class="status-bar">
     </div>
 
-    <!-- 第四行：图像/表格显示区 -->
+    <!-- Fourth row: Image/Table display area | 第四行：图像/表格显示区 -->
     <div class="table-container" style="display: none;">
         <div class="table-wrapper">
             <table id="fits-table">
@@ -669,7 +669,7 @@
                 <tbody></tbody>
             </table>
         </div>
-        <!-- 添加分页控件 -->
+        <!-- Add pagination controls | 添加分页控件 -->
         <div id="pagination-container" style="display: none; justify-content: center; align-items: center; padding: 10px; gap: 10px;">
             <button id="prev-page" class="pagination-button">&lt; 上一页</button>
             <div style="display: flex; align-items: center; gap: 5px;">
@@ -682,7 +682,7 @@
     </div>
 
     <style>
-        /* 添加分页相关样式 */
+        /* Add pagination styles | 添加分页相关样式 */
         .pagination-button {
             background-color: var(--vscode-button-background);
             color: var(--vscode-button-foreground);
