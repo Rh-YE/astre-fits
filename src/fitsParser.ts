@@ -237,7 +237,7 @@ export class FITSParser {
     private header: FITSHeader | null = null;
     // Parse FITS file | 解析FITS文件
     parseFITS(buffer: Uint8Array): FITS {
-        console.log('Starting to parse FITS file...');
+        // console.log('Starting to parse FITS file...');
         const fits = new FITS();
         
         // Check FITS file header | 检查FITS文件头
@@ -257,7 +257,7 @@ export class FITSParser {
         let currentOffset = 0;  // Used to track actual file position | 用于跟踪实际的文件位置
         
         // Parse primary header information | 解析主头信息
-        console.log('Parsing primary header...');
+        // console.log('Parsing primary header...');
         const primaryHeader = this.parseHeader(offset);
         
         // Validate primary HDU | 验证主HDU
@@ -271,7 +271,7 @@ export class FITSParser {
         const bitpix = primaryHeader.getItem('BITPIX')?.value || 0;
         const naxis = primaryHeader.getItem('NAXIS')?.value || 0;
         
-        console.log(`BITPIX: ${bitpix}, NAXIS: ${naxis}`);
+        // console.log(`BITPIX: ${bitpix}, NAXIS: ${naxis}`);
         
         let dataSize = 0;
         if (naxis > 0) {
@@ -280,11 +280,11 @@ export class FITSParser {
             for (let i = 1; i <= naxis; i++) {
                 const axisSize = primaryHeader.getItem(`NAXIS${i}`)?.value || 0;
                 dataSize *= axisSize;
-                console.log(`NAXIS${i}: ${axisSize}`);
+                // console.log(`NAXIS${i}: ${axisSize}`);
             }
         }
         
-        console.log(`Data size: ${dataSize} bytes`);
+        // console.log(`Data size: ${dataSize} bytes`);
         
         // Calculate header blocks and data blocks | 计算头信息块数和数据块数
         const headerSize = this.findHeaderEnd(offset);
@@ -296,9 +296,9 @@ export class FITSParser {
         const headerEnd = offset + alignedHeaderSize;
         currentOffset = headerEnd;  // Update current position to header end | 更新当前位置到头部结束
 
-        console.log(`Actual header size: ${headerSize} bytes`);
-        console.log(`Aligned header size: ${alignedHeaderSize} bytes (${headerBlocks} blocks)`);
-        console.log(`Data start position: ${headerEnd}`);
+        // console.log(`Actual header size: ${headerSize} bytes`);
+        // console.log(`Aligned header size: ${alignedHeaderSize} bytes (${headerBlocks} blocks)`);
+        // console.log(`Data start position: ${headerEnd}`);
         
         // Calculate data blocks and adjust offset
         const dataBlocks = Math.ceil(dataSize / FITS_BLOCK_SIZE);
@@ -306,11 +306,11 @@ export class FITSParser {
         const dataEnd = headerEnd + alignedDataSize;
         currentOffset = dataEnd;  // Update current position to data end
         
-        console.log(`Data blocks: ${dataBlocks}, data ends at ${dataEnd}`);
+        // console.log(`Data blocks: ${dataBlocks}, data ends at ${dataEnd}`);
         // Parse primary HDU data (if exists)
         let data: Float32Array | null = null;
         if (dataSize > 0) {
-            console.log('Parsing primary data...');
+            // console.log('Parsing primary data...');
             data = this.parseData(headerEnd, primaryHeader);
         }
         
@@ -325,7 +325,7 @@ export class FITSParser {
         
         // Update offset to start of next HDU
         offset = currentOffset;
-        console.log('Primary HDU parsing complete, current offset:', offset);
+        // console.log('Primary HDU parsing complete, current offset:', offset);
         
         // Parse extension HDUs
         let extCount = 0;
@@ -333,12 +333,12 @@ export class FITSParser {
         
         while (offset < buffer.length && extCount < maxExtensions) {
             try {
-                console.log(`Parsing extension #${extCount + 1}...`);
-                console.log(`Current offset: ${offset}`);
+                // console.log(`Parsing extension #${extCount + 1}...`);
+                // console.log(`Current offset: ${offset}`);
                 
                 // Check if enough data remains
                 if (buffer.length - offset < FITS_BLOCK_SIZE) {
-                    console.log('Remaining data less than one block, stop parsing');
+                    // console.log('Remaining data less than one block, stop parsing');
                     break;
                 }
                 
@@ -346,17 +346,17 @@ export class FITSParser {
                 
                 // Check if valid extension header
                 if (!this.isValidExtension()) {
-                    console.log('No valid extension header found, stop parsing');
+                    // console.log('No valid extension header found, stop parsing');
                     break;
                 }
                 
                 // Parse extension header
                 const extHeader = this.parseHeader(offset);
-                console.log(`Extension HDU #${extCount + 1} header keywords:`, extHeader.getAllItems().map(item => item.key));
+                // console.log(`Extension HDU #${extCount + 1} header keywords:`, extHeader.getAllItems().map(item => item.key));
                 
                 // Check if END keyword found
                 if (extHeader.getAllItems().length === 0) {
-                    console.log('Extension header empty, stop parsing');
+                    // console.log('Extension header empty, stop parsing');
                     break;
                 }
                 
@@ -365,7 +365,7 @@ export class FITSParser {
                 // Calculate extension header size
                 const extHeaderSize = this.findHeaderEnd(offset);
                 if (extHeaderSize === 0) {
-                    console.log('Extension header end mark not found, stop parsing');
+                    // console.log('Extension header end mark not found, stop parsing');
                     break;
                 }
 
@@ -374,13 +374,13 @@ export class FITSParser {
                 const alignedHeaderSize = extHeaderBlocks * FITS_BLOCK_SIZE;
                 const headerEnd = offset + alignedHeaderSize;  // Extension data start position
 
-                console.log(`Extension header size details:`);
-                console.log(`- Actual header size (including END card): ${extHeaderSize} bytes`);
-                console.log(`- Required 2880-byte blocks: ${extHeaderBlocks}`);
-                console.log(`- Aligned header size: ${alignedHeaderSize} bytes`);
-                console.log(`- Header start position: ${offset}`);
-                console.log(`- Header end position: ${offset + extHeaderSize}`);
-                console.log(`- Data start position: ${headerEnd}`);
+                // console.log(`Extension header size details:`);
+                // console.log(`- Actual header size (including END card): ${extHeaderSize} bytes`);
+                // console.log(`- Required 2880-byte blocks: ${extHeaderBlocks}`);
+                // console.log(`- Aligned header size: ${alignedHeaderSize} bytes`);
+                // console.log(`- Header start position: ${offset}`);
+                // console.log(`- Header end position: ${offset + extHeaderSize}`);
+                // console.log(`- Data start position: ${headerEnd}`);
                 
                 // Calculate extension data size
                 let extDataSize = 0;
@@ -391,7 +391,7 @@ export class FITSParser {
                         const naxis1 = extHeader.getItem('NAXIS1')?.value || 0;
                         const naxis2 = extHeader.getItem('NAXIS2')?.value || 0;
                         extDataSize = naxis1 * naxis2;
-                        console.log(`Calculate extension data size as ${hduType}: ${extDataSize} bytes, NAXIS1=${naxis1}, NAXIS2=${naxis2}`);
+                        // console.log(`Calculate extension data size as ${hduType}: ${extDataSize} bytes, NAXIS1=${naxis1}, NAXIS2=${naxis2}`);
                     }
                 }
                 
@@ -399,26 +399,26 @@ export class FITSParser {
                 const dataBlocks = Math.ceil(extDataSize / FITS_BLOCK_SIZE);
                 const alignedDataSize = dataBlocks * FITS_BLOCK_SIZE;
                 const dataEnd = headerEnd + alignedDataSize;
-                console.log(`Data size calculation:`);
-                console.log(`- Original data size: ${extDataSize} bytes`);
-                console.log(`- Data blocks: ${dataBlocks}`);
-                console.log(`- Aligned data size: ${alignedDataSize} bytes`);
-                console.log(`- Data end position: ${dataEnd}`);
+                // console.log(`Data size calculation:`);
+                // console.log(`- Original data size: ${extDataSize} bytes`);
+                // console.log(`- Data blocks: ${dataBlocks}`);
+                // console.log(`- Aligned data size: ${alignedDataSize} bytes`);
+                // console.log(`- Data end position: ${dataEnd}`);
                 
                 // Parse extension data
                 let extData: Float32Array | null = null;
                 if (extDataSize > 0) {
-                    console.log('Parsing extension data...');
+                    // console.log('Parsing extension data...');
                     if (xtensionItem?.value.trim() === 'BINTABLE') {
-                        console.log('BINTABLE detected, using binary table parser');
+                        // console.log('BINTABLE detected, using binary table parser');
                         extData = this.parseBinaryTable(headerEnd, extHeader, buffer.length - headerEnd);
                     } else if (xtensionItem?.value.trim() === 'TABLE') {
-                        console.log('ASCII table detected, using ASCII table parser');
+                        // console.log('ASCII table detected, using ASCII table parser');
                         extData = this.parseAsciiTable(headerEnd, extHeader, buffer.length - headerEnd);
                     }
                 }
                 
-                console.log(`Extension HDU #${extCount + 1} data parsing result: ${extData ? `length=${extData.length}, sample data=${extData.slice(0, Math.min(10, extData.length))}` : 'null'}`);
+                // console.log(`Extension HDU #${extCount + 1} data parsing result: ${extData ? `length=${extData.length}, sample data=${extData.slice(0, Math.min(10, extData.length))}` : 'null'}`);
                 
                 // Create extension HDU with file position info
                 const extHDU = new FITSHDU(extHeader, extData, {
@@ -439,7 +439,7 @@ export class FITSParser {
             }
         }
         
-        console.log(`Parsing complete, total ${fits.hdus.length} HDUs`);
+        // console.log(`Parsing complete, total ${fits.hdus.length} HDUs`);
         return fits;
     }
 
@@ -449,13 +449,13 @@ export class FITSParser {
         // Check SIMPLE keyword
         const header = this.buffer.readString(FLEN_CARD);
         if (!header.startsWith('SIMPLE  =')) {
-            console.error('FITS header validation failed: missing SIMPLE keyword');
+            // console.error('FITS header validation failed: missing SIMPLE keyword');
             return false;
         }
 
         // Check if SIMPLE value is T
         if (header[29] !== 'T') {
-            console.error('FITS header validation failed: SIMPLE value is not T');
+            // console.error('FITS header validation failed: SIMPLE value is not T');
             return false;
         }
 
@@ -464,7 +464,7 @@ export class FITSParser {
         // Check BITPIX
         const bitpixLine = this.buffer.readString(FLEN_CARD);
         if (!bitpixLine.startsWith('BITPIX')) {
-            console.error('FITS header validation failed: missing BITPIX keyword');
+            // console.error('FITS header validation failed: missing BITPIX keyword');
             return false;
         }
 
@@ -473,7 +473,7 @@ export class FITSParser {
         // Check NAXIS
         const naxisLine = this.buffer.readString(FLEN_CARD);
         if (!naxisLine.startsWith('NAXIS')) {
-            console.error('FITS header validation failed: missing NAXIS keyword');
+            // console.error('FITS header validation failed: missing NAXIS keyword');
             return false;
         }
 
@@ -639,7 +639,7 @@ export class FITSParser {
             return new Float32Array(0);
         }
         
-        console.log(`parseData: Parsing completed, bitpix=${bitpix}, naxis=${naxis}, dataSize=${dataSize}, data length=${data.length}, sample data=`, data.slice(0, Math.min(10, data.length)));
+        // console.log(`parseData: Parsing completed, bitpix=${bitpix}, naxis=${naxis}, dataSize=${dataSize}, data length=${data.length}, sample data=`, data.slice(0, Math.min(10, data.length)));
         
         return data;
     }
@@ -647,15 +647,15 @@ export class FITSParser {
     private parseBinaryTable(offset: number, header: FITSHeader, availableBytes: number): TableResult {
         if (!this.buffer) throw new Error('Buffer not initialized');
         
-        console.log('Start parsing binary table data');
-        console.log('Data start offset:', offset);
-        console.log('Available bytes:', availableBytes);
+        // console.log('Start parsing binary table data');
+        // console.log('Data start offset:', offset);
+        // console.log('Available bytes:', availableBytes);
         
         const naxis1 = header.getItem('NAXIS1')?.value;
         const naxis2 = header.getItem('NAXIS2')?.value;
         const tfields = header.getItem('TFIELDS')?.value;
         
-        console.log(`NAXIS1 (row length) = ${naxis1}, NAXIS2 (row count) = ${naxis2}, TFIELDS (field count) = ${tfields}`);
+        // console.log(`NAXIS1 (row length) = ${naxis1}, NAXIS2 (row count) = ${naxis2}, TFIELDS (field count) = ${tfields}`);
         
         if (!naxis1 || !naxis2 || !tfields) {
             console.error('Binary table missing required header information');
@@ -898,7 +898,7 @@ export class FITSParser {
 
                 // Output progress / 输出进度
                 if (row % 1000 === 0 || row === naxis2 - 1) {
-                    console.log(`Progress: ${((row + 1) / naxis2 * 100).toFixed(1)}%`);
+                    // console.log(`Progress: ${((row + 1) / naxis2 * 100).toFixed(1)}%`);
                 }
             }
 
@@ -906,21 +906,21 @@ export class FITSParser {
             for (const [name, column] of columns) {
                 if (column.isString) {
                     // For string type, output string values / 对于字符串类型，输出字符串值
-                    console.log(`First 10 data for column ${name}:`, column.data.slice(0, 10));
+                    // console.log(`First 10 data for column ${name}:`, column.data.slice(0, 10));
                 } else if (column.dataType === 'L') {
                     // For boolean type, handle array case specially / 对于布尔类型，需要特殊处理数组情况
                     const sampleData = column.repeatCount === naxis2 ?
                         column.data.slice(0, 10) :
                         Array.from({ length: Math.min(10, naxis2) }, (_, i) => 
                             column.data.slice(i * column.repeatCount, (i + 1) * column.repeatCount));
-                    console.log(`First 10 data for column ${name}:`, sampleData);
+                    // console.log(`First 10 data for column ${name}:`, sampleData);
                 } else {
                     // For numeric type, handle array case specially / 对于数值类型，需要特殊处理数组情况
                     const sampleData = column.repeatCount === naxis2 ?
                         Array.from(column.data.slice(0, 10)) :
                         Array.from({ length: Math.min(10, naxis2) }, (_, i) => 
                             Array.from(column.data.slice(i * column.repeatCount, (i + 1) * column.repeatCount)));
-                    console.log(`First 10 data for column ${name}:`, sampleData);
+                    // console.log(`First 10 data for column ${name}:`, sampleData);
                 }
             }
 
@@ -1047,15 +1047,15 @@ export class FITSParser {
     private parseAsciiTable(offset: number, header: FITSHeader, availableBytes: number): TableResult {
         if (!this.buffer) throw new Error('Buffer not initialized');
         
-        console.log('Start parsing ASCII table data');
-        console.log('Data start offset:', offset);
-        console.log('Available bytes:', availableBytes);
+        // console.log('Start parsing ASCII table data');
+        // console.log('Data start offset:', offset);
+        // console.log('Available bytes:', availableBytes);
         
         const naxis1 = header.getItem('NAXIS1')?.value;
         const naxis2 = header.getItem('NAXIS2')?.value;
         const tfields = header.getItem('TFIELDS')?.value;
         
-        console.log(`NAXIS1 (row length) = ${naxis1}, NAXIS2 (rows) = ${naxis2}, TFIELDS (fields) = ${tfields}`);
+        // console.log(`NAXIS1 (row length) = ${naxis1}, NAXIS2 (rows) = ${naxis2}, TFIELDS (fields) = ${tfields}`);
         
         if (!naxis1 || !naxis2 || !tfields) {
             console.error('Missing required header information for ASCII table');
@@ -1177,9 +1177,9 @@ export class FITSParser {
                 }
 
                 // Output progress / 输出进度
-                if (row % 1000 === 0 || row === naxis2 - 1) {
-                    console.log(`Progress: ${((row + 1) / naxis2 * 100).toFixed(1)}%`);
-                }
+                // if (row % 1000 === 0 || row === naxis2 - 1) {
+                    // console.log(`Progress: ${((row + 1) / naxis2 * 100).toFixed(1)}%`);
+                // }
             }
 
             // Create column data Map / 创建列数据Map

@@ -99,7 +99,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
     ) {
         this.logger = Logger.getInstance();
         this.logger.setLogLevel(LogLevel.INFO);
-        this.logger.info('FitsViewerProvider created');
+        // this.logger.info('FitsViewerProvider created');
         
         this.dataManager = FITSDataManager.getInstance(context);
         this.loadingManager = LoadingManager.getInstance();
@@ -111,7 +111,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
         openContext: vscode.CustomDocumentOpenContext,
         token: vscode.CancellationToken
     ): Promise<vscode.CustomDocument> {
-        this.logger.info(`Opening file: ${uri.fsPath}`);
+        // this.logger.info(`Opening file: ${uri.fsPath}`);
         try {
             // Verify file exists | 验证文件是否存在
             await vscode.workspace.fs.stat(uri);
@@ -128,7 +128,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
         webviewPanel: vscode.WebviewPanel,
         token: vscode.CancellationToken
     ): Promise<void> {
-        this.logger.info('Resolving custom editor');
+        // this.logger.info('Resolving custom editor');
         
         // Configure webview | 配置webview
         this.webviewService.configureWebview(webviewPanel.webview);
@@ -150,7 +150,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             if (document.uri) {
                 this.dataManager.clearCache(document.uri);
                 this.currentFileUri = undefined;
-                this.logger.info(`Cache cleared for file: ${document.uri.fsPath}`);
+                // this.logger.info(`Cache cleared for file: ${document.uri.fsPath}`);
             }
         });
     }
@@ -159,7 +159,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
      * Handle webview ready message | 处理webview准备就绪消息
      */
     async handleWebviewReady(uri: vscode.Uri, webviewPanel: vscode.WebviewPanel): Promise<void> {
-        this.logger.info('Webview ready, starting data update');
+        // this.logger.info('Webview ready, starting data update');
         await this.updateWebview(uri, webviewPanel);
     }
 
@@ -403,7 +403,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
      * Load FITS file | 加载FITS文件
      */
     private async loadFITS(fileUri: vscode.Uri): Promise<FITS> {
-        this.logger.info('Starting to load FITS file...');
+        // this.logger.info('Starting to load FITS file...');
         try {
             // Read FITS file | 读取FITS文件
             this.logger.debug(`Trying to read file: ${fileUri.fsPath}`);
@@ -419,7 +419,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             this.logger.debug('Loading to data manager...');
             await this.dataManager.loadFITS(fileUri, fits);
             this.currentFileUri = fileUri;
-            this.logger.info('FITS file loading complete');
+            // this.logger.info('FITS file loading complete');
             
             return fits;
         } catch (error) {
