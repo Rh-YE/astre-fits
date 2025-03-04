@@ -95,7 +95,7 @@ astre.fits，（astre源于法语的天体一词），是一个专门用于查�
 ## 参考
 
 1. Definition of the Flexible Image Transport System (FITS) Version 4.0
-2. SAOImageDS9
+2. SAOImageDS9: https://ds9.si.edu/doc/ref/how.html
 
 ## 贡献指南
 

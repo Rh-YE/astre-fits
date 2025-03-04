@@ -3,7 +3,7 @@ const vscode = (() => {
     try {
         return acquireVsCodeApi();
     } catch (error) {
-        console.error('获取vscode API失败:', error);
+        console.error('Failed to get vscode API:', error);
         return null;
     }
 })();
@@ -54,12 +54,12 @@ function updateStatusInfo(currentImageData, zoomLevel) {
     
     const statusInfo = document.getElementById('status-info');
     if (statusInfo) {
-        let statusText = `尺寸: ${currentImageData.width}x${currentImageData.height}, `;
-        statusText += `缩放: ${Math.round(zoomLevel * 100)}%, `;
-        statusText += `数据范围: ${currentImageData.min.toExponential(4)} - ${currentImageData.max.toExponential(4)}`;
+        let statusText = `Size: ${currentImageData.width}x${currentImageData.height}, `;
+        statusText += `Zoom: ${Math.round(zoomLevel * 100)}%, `;
+        statusText += `Data range: ${currentImageData.min.toExponential(4)} - ${currentImageData.max.toExponential(4)}`;
         
         if (isUltraLargeImage) {
-            statusText += ' (超大图像模式)';
+            statusText += ' (Ultra large image mode)';
         }
         
         statusInfo.textContent = statusText;
@@ -68,7 +68,7 @@ function updateStatusInfo(currentImageData, zoomLevel) {
 
 // Show zoom indicator | 显示缩放指示器
 function showZoomIndicator(zoomIndicator, level, timeout = 2000) {
-    zoomIndicator.textContent = `缩放: ${Math.round(level * 100)}%`;
+    zoomIndicator.textContent = `Zoom: ${Math.round(level * 100)}%`;
     zoomIndicator.style.display = 'block';
     
     setTimeout(() => {
