@@ -414,6 +414,9 @@ export class FITSParser {
                     if (xtensionItem?.value.trim() === 'BINTABLE') {
                         console.log('检测到BINTABLE，使用二进制表解析方法');
                         extData = this.parseBinaryTable(headerEnd, extHeader, buffer.length - headerEnd);
+                    } else if (xtensionItem?.value.trim() === 'TABLE') {
+                        console.log('检测到ASCII表格，使用ASCII表格解析方法');
+                        extData = this.parseAsciiTable(headerEnd, extHeader, buffer.length - headerEnd);
                     }
                 }
                 
@@ -1041,6 +1044,220 @@ export class FITSParser {
                 isStringColumn: { value: () => false, writable: true }
             });
             return errorResult;
+        }
+    }
+
+    private parseAsciiTable(offset: number, header: FITSHeader, availableBytes: number): TableResult {
+        if (!this.buffer) throw new Error('Buffer未初始化');
+        
+        console.log('开始解析ASCII表格数据');
+        console.log('数据起始偏移量:', offset);
+        console.log('可用字节数:', availableBytes);
+        
+        const naxis1 = header.getItem('NAXIS1')?.value;
+        const naxis2 = header.getItem('NAXIS2')?.value;
+        const tfields = header.getItem('TFIELDS')?.value;
+        
+        console.log(`NAXIS1 (行长度) = ${naxis1}, NAXIS2 (行数) = ${naxis2}, TFIELDS (字段数) = ${tfields}`);
+        
+        if (!naxis1 || !naxis2 || !tfields) {
+            console.error('ASCII表格缺少必要的头信息');
+            const errorResult = new Float32Array(0) as TableResult;
+            Object.defineProperties(errorResult, {
+                columns: { value: new Map(), writable: true },
+                getColumnValue: { value: () => '', writable: true },
+                isStringColumn: { value: () => false, writable: true }
+            });
+            return errorResult;
+        }
+
+        // 解析列信息
+        const columns = new Map<string, ColumnInfo>();
+        
+        // 首先收集所有列的信息
+        for (let i = 1; i <= tfields; i++) {
+            const tform = header.getItem(`TFORM${i}`)?.value;
+            const ttype = header.getItem(`TTYPE${i}`)?.value || `COL${i}`;
+            const tunit = header.getItem(`TUNIT${i}`)?.value || '';
+            const tbcol = header.getItem(`TBCOL${i}`)?.value;
+            
+            if (!tform || !tbcol) {
+                console.error(`缺少TFORM${i}或TBCOL${i}定义`);
+                continue;
+            }
+            
+            // 解析TFORM格式
+            const formatMatch = tform.trim().match(/^([A-Z])(\d+)(\.(\d+))?$/);
+            if (!formatMatch) {
+                console.error(`无效的TFORM${i}格式: ${tform}`);
+                continue;
+            }
+            
+            const dataType = formatMatch[1];
+            const width = parseInt(formatMatch[2]);
+            const precision = formatMatch[4] ? parseInt(formatMatch[4]) : 0;
+            
+            // 确定数据类型和对应的数组类型
+            let ArrayType: any;
+            let isString = false;
+            
+            switch (dataType) {
+                case 'I':  // Integer
+                    ArrayType = Int32Array;
+                    break;
+                case 'F':  // Fixed-point
+                case 'E':  // Exponential floating-point
+                    ArrayType = Float32Array;
+                    break;
+                case 'D':  // Double-precision floating-point
+                    ArrayType = Float64Array;
+                    break;
+                case 'A':  // Character
+                    isString = true;
+                    break;
+                default:
+                    console.warn(`不支持的数据类型: ${dataType}`);
+                    continue;
+            }
+
+            // 创建列数据数组
+            const columnData = isString ? new Array(naxis2) : new ArrayType(naxis2);
+
+            columns.set(ttype, {
+                name: ttype,
+                format: tform,
+                unit: tunit,
+                dataType,
+                repeatCount: 1,  // ASCII表格每个字段只有一个值
+                byteOffset: tbcol - 1,  // FITS的TBCOL是1-based
+                byteSize: width,
+                data: columnData,
+                isString
+            });
+        }
+
+        try {
+            // 读取每一行的数据
+            const rowBuffer = new Uint8Array(naxis1);
+            for (let row = 0; row < naxis2; row++) {
+                // 读取整行数据
+                const rowStart = offset + row * naxis1;
+                this.buffer.seek(rowStart);
+                
+                for (let i = 0; i < naxis1; i++) {
+                    rowBuffer[i] = this.buffer.readInt8();
+                }
+                
+                // 处理每一列
+                for (const [name, column] of columns) {
+                    const fieldStart = column.byteOffset;
+                    const fieldEnd = fieldStart + column.byteSize;
+                    
+                    // 提取字段文本
+                    const fieldText = new TextDecoder().decode(rowBuffer.slice(fieldStart, fieldEnd)).trim();
+                    
+                    try {
+                        if (column.isString) {
+                            // 字符串类型直接存储
+                            column.data[row] = fieldText;
+                        } else {
+                            // 数值类型需要解析
+                            const value = column.dataType === 'I' ? 
+                                parseInt(fieldText) : 
+                                parseFloat(fieldText);
+                            
+                            if (!isNaN(value)) {
+                                column.data[row] = value;
+                            } else {
+                                console.warn(`无法解析值: ${fieldText} (列=${name}, 行=${row})`);
+                                column.data[row] = 0;
+                            }
+                        }
+                    } catch (error) {
+                        console.error(`解析数据出错: 列=${name}, 行=${row}, 文本=${fieldText}`, error);
+                        column.data[row] = column.isString ? '' : 0;
+                    }
+                }
+
+                // 输出进度
+                if (row % 1000 === 0 || row === naxis2 - 1) {
+                    console.log(`处理进度: ${((row + 1) / naxis2 * 100).toFixed(1)}%`);
+                }
+            }
+
+            // 创建列数据Map
+            const columnsData = new Map<string, ColumnData>();
+            for (const [name, column] of columns) {
+                if (column.isString) {
+                    // 对于字符串类型，创建 StringColumnData
+                    const stringColumn: StringColumnData = {
+                        name: column.name,
+                        data: column.data as string[],
+                        format: column.format,
+                        unit: column.unit,
+                        dataType: column.dataType,
+                        repeatCount: 1,
+                        getValue(index: number): string {
+                            return this.data[index] || '';
+                        }
+                    };
+                    columnsData.set(name, stringColumn);
+                } else {
+                    // 对于数值类型，创建 NumericColumnData
+                    const numericColumn: NumericColumnData = {
+                        name: column.name,
+                        data: column.data as Float32Array,
+                        format: column.format,
+                        unit: column.unit,
+                        dataType: column.dataType,
+                        repeatCount: 1,
+                        getValue(index: number): number {
+                            return this.data[index];
+                        }
+                    };
+                    columnsData.set(name, numericColumn);
+                }
+            }
+
+            // 创建结果数组
+            const firstColumn = Array.from(columns.values())[0];
+            if (!firstColumn) {
+                const emptyResult = new Float32Array(0) as TableResult;
+                Object.defineProperties(emptyResult, {
+                    columns: { value: new Map(), writable: true },
+                    getColumnValue: { value: () => '', writable: true },
+                    isStringColumn: { value: () => false, writable: true }
+                });
+                return emptyResult;
+            }
+
+            const result = new Float32Array(firstColumn.data) as TableResult;
+            
+            // 添加额外的属性
+            Object.defineProperties(result, {
+                columns: { value: columnsData, writable: true },
+                getColumnValue: {
+                    value: function(columnName: string, index: number): string | number {
+                        const column = this.columns.get(columnName);
+                        if (!column) return '';
+                        return column.getValue(index);
+                    },
+                    writable: true
+                },
+                isStringColumn: {
+                    value: function(columnName: string): boolean {
+                        const column = this.columns.get(columnName);
+                        return column?.dataType === 'A';
+                    },
+                    writable: true
+                }
+            });
+
+            return result;
+
+        } catch (error) {
+            console.error('解析ASCII表格时出错:', error);
+            throw error;
         }
     }
 } 

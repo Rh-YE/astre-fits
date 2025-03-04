@@ -70,10 +70,7 @@
                 let isAscending = true;
 
                 function sortTable(columnName) {
-                    const table = document.getElementById('fits-table');
-                    const tbody = table.querySelector('tbody');
-                    const rows = Array.from(tbody.querySelectorAll('tr'));
-                    const headers = table.querySelectorAll('th');
+                    const headers = document.querySelectorAll('#fits-table th');
                     
                     // 移除所有排序标记
                     headers.forEach(header => {
@@ -89,33 +86,48 @@
                     }
                     
                     // 添加排序标记
-                    const header = table.querySelector(`th[data-column="${columnName}"]`);
+                    const header = document.querySelector(`th[data-column="${columnName}"]`);
                     header.classList.add(isAscending ? 'sorted-asc' : 'sorted-desc');
+
+                    // 获取列的数据类型
+                    const dataType = header.getAttribute('data-type');
                     
-                    // 获取列索引
-                    const columnIndex = Array.from(headers).findIndex(h => h.getAttribute('data-column') === columnName);
-                    
-                    // 排序行
-                    rows.sort((a, b) => {
-                        const aValue = a.cells[columnIndex].textContent;
-                        const bValue = b.cells[columnIndex].textContent;
+                    // 对所有数据进行排序
+                    window.tableState.allRows.sort((a, b) => {
+                        const aValue = a[columnName];
+                        const bValue = b[columnName];
                         
-                        // 尝试数字比较
+                        // 处理空值
+                        if (aValue === null || aValue === undefined) return isAscending ? -1 : 1;
+                        if (bValue === null || bValue === undefined) return isAscending ? 1 : -1;
+                        
+                        // 根据数据类型进行比较
+                        if (dataType === 'L') {  // 布尔类型
+                            return isAscending ? 
+                                aValue === bValue ? 0 : aValue ? 1 : -1 :
+                                aValue === bValue ? 0 : aValue ? -1 : 1;
+                        }
+                        
+                        // 数值类型比较
+                        if (typeof aValue === 'number' && typeof bValue === 'number') {
+                            return isAscending ? aValue - bValue : bValue - aValue;
+                        }
+                        
+                        // 尝试数字比较（字符串形式的数字）
                         const aNum = parseFloat(aValue);
                         const bNum = parseFloat(bValue);
-                        
                         if (!isNaN(aNum) && !isNaN(bNum)) {
                             return isAscending ? aNum - bNum : bNum - aNum;
                         }
                         
                         // 字符串比较
                         return isAscending ? 
-                            aValue.localeCompare(bValue) : 
-                            bValue.localeCompare(aValue);
+                            String(aValue).localeCompare(String(bValue)) : 
+                            String(bValue).localeCompare(String(aValue));
                     });
                     
-                    // 重新插入排序后的行
-                    rows.forEach(row => tbody.appendChild(row));
+                    // 重新渲染当前页
+                    renderCurrentPage();
                 }
 
                 // 处理表格数据
@@ -128,35 +140,109 @@
                     const tbody = document.querySelector('#fits-table tbody');
                     thead.innerHTML = '';
                     tbody.innerHTML = '';
-                    
+
                     // 添加表头
                     columns.forEach(col => {
                         const th = document.createElement('th');
                         th.textContent = `${col.name}${col.unit ? ` (${col.unit})` : ''}`;
                         th.setAttribute('data-column', col.name);
+                        th.setAttribute('data-type', col.dataType || '');  // 保存数据类型
                         th.addEventListener('click', () => sortTable(col.name));
                         thead.appendChild(th);
                     });
-                    
-                    // 添加表格数据
-                    rows.forEach((row, rowIndex) => {
-                        console.log(`Processing row ${rowIndex}:`, row);
+
+                    // 初始化分页状态
+                    window.tableState = {
+                        allRows: rows,
+                        columns: columns,  // 保存列信息
+                        currentPage: 1,
+                        rowsPerPage: 1000,
+                        totalPages: Math.ceil(rows.length / 1000)
+                    };
+
+                    // 如果数据量超过10万行，显示分页控件
+                    const paginationContainer = document.getElementById('pagination-container');
+                    if (rows.length > 100000) {
+                        paginationContainer.style.display = 'flex';
+                        updatePaginationControls();
+                    } else {
+                        paginationContainer.style.display = 'none';
+                        window.tableState.rowsPerPage = rows.length;
+                    }
+
+                    // 渲染当前页数据
+                    renderCurrentPage();
+                }
+
+                // 渲染当前页数据
+                function renderCurrentPage() {
+                    const { allRows, currentPage, rowsPerPage } = window.tableState;
+                    const tbody = document.querySelector('#fits-table tbody');
+                    tbody.innerHTML = '';
+
+                    const startIdx = (currentPage - 1) * rowsPerPage;
+                    const endIdx = Math.min(startIdx + rowsPerPage, allRows.length);
+                    const currentRows = allRows.slice(startIdx, endIdx);
+
+                    // 获取列信息
+                    const columns = Array.from(document.querySelectorAll('#fits-table thead th')).map(th => ({
+                        name: th.getAttribute('data-column'),
+                        dataType: th.getAttribute('data-type')
+                    }));
+
+                    currentRows.forEach(row => {
                         const tr = document.createElement('tr');
                         columns.forEach(col => {
                             const td = document.createElement('td');
                             const value = row[col.name];
-                            console.log(`Column ${col.name}:`, {
-                                value,
-                                type: typeof value,
-                                isArray: Array.isArray(value),
-                                isTypedArray: ArrayBuffer.isView(value)
-                            });
-                            td.textContent = value !== null ? formatValue(value, col.dataType) : '';
+                            td.textContent = value !== null && value !== undefined ? 
+                                formatValue(value, col.dataType) : '';
                             tr.appendChild(td);
                         });
                         tbody.appendChild(tr);
                     });
+
+                    // 更新分页信息显示
+                    document.getElementById('page-info').textContent = 
+                        `第 ${currentPage} 页，共 ${window.tableState.totalPages} 页 (总计 ${allRows.length} 行)`;
                 }
+
+                // 更新分页控件状态
+                function updatePaginationControls() {
+                    const { currentPage, totalPages } = window.tableState;
+                    document.getElementById('prev-page').disabled = currentPage === 1;
+                    document.getElementById('next-page').disabled = currentPage === totalPages;
+                    document.getElementById('page-number').value = currentPage;
+                    document.getElementById('total-pages').textContent = totalPages;
+                }
+
+                // 添加分页事件处理
+                document.getElementById('prev-page')?.addEventListener('click', () => {
+                    if (window.tableState.currentPage > 1) {
+                        window.tableState.currentPage--;
+                        renderCurrentPage();
+                        updatePaginationControls();
+                    }
+                });
+
+                document.getElementById('next-page')?.addEventListener('click', () => {
+                    if (window.tableState.currentPage < window.tableState.totalPages) {
+                        window.tableState.currentPage++;
+                        renderCurrentPage();
+                        updatePaginationControls();
+                    }
+                });
+
+                document.getElementById('page-number')?.addEventListener('change', (e) => {
+                    const pageNum = parseInt(e.target.value);
+                    if (pageNum >= 1 && pageNum <= window.tableState.totalPages) {
+                        window.tableState.currentPage = pageNum;
+                        renderCurrentPage();
+                        updatePaginationControls();
+                    } else {
+                        e.target.value = window.tableState.currentPage;
+                    }
+                });
 
                 // 初始化图像查看器和光谱查看器
                 const imageViewer = new ImageViewer();
@@ -382,6 +468,9 @@
                             document.getElementById('spectrum-canvas').style.display = 'block';
                             document.getElementById('image-placeholder').style.display = 'none';
                             
+                            // 隐藏表格操作按钮
+                            document.querySelector('.table-button').parentElement.style.display = 'none';
+                            
                             // 清空WCS信息
                             document.getElementById('wcs-value-1').textContent = '-';
                             document.getElementById('wcs-value-2').textContent = '-';
@@ -424,6 +513,11 @@
                             document.getElementById('fits-canvas').style.display = 'none';
                             document.getElementById('spectrum-canvas').style.display = 'none';
                             document.getElementById('image-placeholder').style.display = 'none';
+                            // 显示表格操作按钮
+                            document.querySelector('.table-button').parentElement.style.display = 'flex';
+                            // 隐藏光谱相关控件
+                            document.getElementById('spectrum-column-selectors').style.display = 'none';
+                            document.getElementById('image-scale-buttons').style.display = 'none';
 
                             break;
                     }
@@ -501,6 +595,12 @@
         <div class="controls-container">
             <!-- 第三行：缩放控制区 -->
             <div class="scale-controls">
+                <!-- 表格操作按钮 -->
+                <div style="display: flex; align-items: center; margin-right: 15px;">
+                    <button id="export-table-button" class="table-button">导出CSV</button>
+                    <button id="return-spectrum-button" class="table-button" style="margin-left: 10px;">返回光谱</button>
+                </div>
+
                 <!-- 图像缩放按钮组 -->
                 <div id="image-scale-buttons" class="scale-buttons-group">
                     <div class="scale-button active" data-scale="linear">linear</div>
@@ -557,15 +657,10 @@
     
     <!-- 添加状态栏 -->
     <div class="status-bar">
-        <div id="status-info">准备就绪</div>
     </div>
 
     <!-- 第四行：图像/表格显示区 -->
     <div class="table-container" style="display: none;">
-        <div class="table-toolbar">
-            <button id="export-table-button" class="table-button">导出CSV</button>
-            <button id="return-spectrum-button" class="table-button" style="margin-left: 10px;">返回光谱</button>
-        </div>
         <div class="table-wrapper">
             <table id="fits-table">
                 <thead>
@@ -574,6 +669,46 @@
                 <tbody></tbody>
             </table>
         </div>
+        <!-- 添加分页控件 -->
+        <div id="pagination-container" style="display: none; justify-content: center; align-items: center; padding: 10px; gap: 10px;">
+            <button id="prev-page" class="pagination-button">&lt; 上一页</button>
+            <div style="display: flex; align-items: center; gap: 5px;">
+                <input type="number" id="page-number" style="width: 60px; text-align: center;" min="1">
+                <span>/ <span id="total-pages">1</span></span>
+            </div>
+            <button id="next-page" class="pagination-button">下一页 &gt;</button>
+            <span id="page-info" style="margin-left: 10px;"></span>
+        </div>
     </div>
+
+    <style>
+        /* 添加分页相关样式 */
+        .pagination-button {
+            background-color: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            padding: 4px 8px;
+            border-radius: 2px;
+            cursor: pointer;
+        }
+
+        .pagination-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #page-number {
+            background-color: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            border: 1px solid var(--vscode-input-border);
+            padding: 2px 4px;
+            border-radius: 2px;
+        }
+
+        #pagination-container {
+            border-top: 1px solid var(--vscode-panel-border);
+            margin-top: 10px;
+        }
+    </style>
 </body>
 </html> 

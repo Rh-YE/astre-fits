@@ -130,16 +130,39 @@ class SpectrumViewer {
         
         // 计算缩放因子
         const zoomFactor = event.deltaY < 0 ? 1.1 : 0.9;
-        const newZoomLevelX = Math.max(0.1, Math.min(50, this.spectrumZoomLevelX * zoomFactor));
-        const newZoomLevelY = Math.max(0.1, Math.min(50, this.spectrumZoomLevelY * zoomFactor));
-        
-        // 获取鼠标在Canvas上的位置
-        const rect = this.canvas.getBoundingClientRect();
-        const mouseX = event.clientX - rect.left;
-        const mouseY = event.clientY - rect.top;
         
         // 设置边距
         const margin = { top: 40, right: 40, bottom: 60, left: 70 };
+        
+        // 获取绘图区域的尺寸
+        const plotWidth = this.canvas.width - margin.left - margin.right;
+        const plotHeight = this.canvas.height - margin.top - margin.bottom;
+        
+        // 获取鼠标在Canvas上的位置和中心点位置
+        const rect = this.canvas.getBoundingClientRect();
+        const mouseX = event.clientX - rect.left;
+        const mouseY = event.clientY - rect.top;
+        const centerX = margin.left + plotWidth / 2;
+        const centerY = margin.top + plotHeight / 2;
+        
+        // 根据按键修饰符决定缩放行为和缩放中心
+        let newZoomLevelX = this.spectrumZoomLevelX;
+        let newZoomLevelY = this.spectrumZoomLevelY;
+        let useMousePosition = true;  // 默认使用鼠标位置作为缩放中心
+        
+        if (event.shiftKey) {
+            // 仅缩放 Y 轴，使用窗口中心
+            newZoomLevelY = Math.max(0.1, Math.min(50, this.spectrumZoomLevelY * zoomFactor));
+            useMousePosition = false;
+        } else if (event.ctrlKey || event.metaKey) {
+            // 仅缩放 X 轴，使用窗口中心
+            newZoomLevelX = Math.max(0.1, Math.min(50, this.spectrumZoomLevelX * zoomFactor));
+            useMousePosition = false;
+        } else {
+            // 同时缩放两个轴，使用鼠标位置
+            newZoomLevelX = Math.max(0.1, Math.min(50, this.spectrumZoomLevelX * zoomFactor));
+            newZoomLevelY = Math.max(0.1, Math.min(50, this.spectrumZoomLevelY * zoomFactor));
+        }
         
         // 只有当鼠标在绘图区域内时才进行缩放
         if (mouseX >= margin.left && mouseX <= (this.canvas.width - margin.right) &&
@@ -150,30 +173,47 @@ class SpectrumViewer {
             const maxX = Math.max(...data.wavelength);
             const minY = Math.min(...data.flux);
             const maxY = Math.max(...data.flux);
-            const plotWidth = this.canvas.width - margin.left - margin.right;
-            const plotHeight = this.canvas.height - margin.top - margin.bottom;
             
-            // 计算当前可见数据范围
+            // 计算数据到屏幕的映射比例
             const scaleX = plotWidth / (maxX - minX);
             const scaleY = plotHeight / (maxY - minY);
+            
+            // 计算当前可见数据范围
             const visibleMinX = minX + this.spectrumPanOffsetX / (scaleX * this.spectrumZoomLevelX);
             const visibleMinY = minY + this.spectrumPanOffsetY / (scaleY * this.spectrumZoomLevelY);
             
-            // 计算鼠标在数据坐标系中的位置
-            const mouseDataX = visibleMinX + (mouseX - margin.left) / (scaleX * this.spectrumZoomLevelX);
-            const mouseDataY = visibleMinY + (this.canvas.height - margin.bottom - mouseY) / (scaleY * this.spectrumZoomLevelY);
+            // 根据缩放中心选择计算参考点
+            let refX, refY;
+            if (useMousePosition) {
+                // 使用鼠标位置作为缩放中心
+                refX = visibleMinX + (mouseX - margin.left) / (scaleX * this.spectrumZoomLevelX);
+                refY = visibleMinY + (this.canvas.height - margin.bottom - mouseY) / (scaleY * this.spectrumZoomLevelY);
+            } else {
+                // 使用窗口中心作为缩放中心
+                refX = visibleMinX + (plotWidth / 2) / (scaleX * this.spectrumZoomLevelX);
+                refY = visibleMinY + (plotHeight / 2) / (scaleY * this.spectrumZoomLevelY);
+            }
             
             // 更新缩放级别
             this.spectrumZoomLevelX = newZoomLevelX;
             this.spectrumZoomLevelY = newZoomLevelY;
             
-            // 计算新的可见数据范围，保持鼠标指向的数据点不变
+            // 计算新的可见数据范围，保持参考点不变
             const newScaleX = plotWidth / (maxX - minX);
             const newScaleY = plotHeight / (maxY - minY);
-            const newVisibleMinX = mouseDataX - (mouseX - margin.left) / (newScaleX * this.spectrumZoomLevelX);
-            const newVisibleMinY = mouseDataY - (this.canvas.height - margin.bottom - mouseY) / (newScaleY * this.spectrumZoomLevelY);
             
-            // 更新平移偏移量，使鼠标位置保持在同一数据点上
+            let newVisibleMinX, newVisibleMinY;
+            if (useMousePosition) {
+                // 使用鼠标位置计算新的可见范围
+                newVisibleMinX = refX - (mouseX - margin.left) / (newScaleX * this.spectrumZoomLevelX);
+                newVisibleMinY = refY - (this.canvas.height - margin.bottom - mouseY) / (newScaleY * this.spectrumZoomLevelY);
+            } else {
+                // 使用窗口中心计算新的可见范围
+                newVisibleMinX = refX - (plotWidth / 2) / (newScaleX * this.spectrumZoomLevelX);
+                newVisibleMinY = refY - (plotHeight / 2) / (newScaleY * this.spectrumZoomLevelY);
+            }
+            
+            // 更新平移偏移量
             this.spectrumPanOffsetX = (newVisibleMinX - minX) * newScaleX * this.spectrumZoomLevelX;
             this.spectrumPanOffsetY = (newVisibleMinY - minY) * newScaleY * this.spectrumZoomLevelY;
             

@@ -576,6 +576,9 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             // 获取最大行数
             const maxRows = Math.max(...columnsInfo.map(col => {
                 const column = hduData.columns?.get(col.name);
+                if (column?.repeatCount === column?.data?.length && typeof column.data[0] === 'number') {
+                    return column.data.length;  // 如果repeatCount等于数据长度且第一个元素是数字，则每个元素都是一行
+                }
                 return column?.repeatCount === column?.data?.length ? 1 : 
                     (column?.data?.length || 0) / (column?.repeatCount || 1);
             }));
@@ -592,9 +595,12 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                             // 去除尾部空格
                             row[col.name] = typeof value === 'string' ? value.trimEnd() : value;
                         } else {
-                            // 对于其他类型（如数值类型），保持数组形式
-                            if (column.repeatCount === column.data.length) {
-                                // 如果repeatCount等于数据长度，说明这是一个单一值
+                            // 对于其他类型（如数值类型）
+                            if (column.repeatCount === column.data.length && typeof column.data[0] === 'number') {
+                                // 如果repeatCount等于数据长度且是数值类型，直接使用该值
+                                row[col.name] = column.data[i];
+                            } else if (column.repeatCount === column.data.length) {
+                                // 如果repeatCount等于数据长度但不是数值类型，这是一个单一值
                                 row[col.name] = column.getValue(i);
                             } else {
                                 // 否则，这是一个数组值，需要获取对应的数组片段
