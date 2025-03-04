@@ -12,6 +12,8 @@ export interface IWebviewMessageHandler {
     handleGetHeaderInfo(uri: vscode.Uri, webviewPanel: vscode.WebviewPanel): Promise<void>;
     handleSwitchHDU(uri: vscode.Uri, hduIndex: number, webviewPanel: vscode.WebviewPanel): Promise<void>;
     handleUpdateSpectrum(uri: vscode.Uri, wavelengthColumn: string, fluxColumn: string, webviewPanel: vscode.WebviewPanel): Promise<void>;
+    handleShowTable(uri: vscode.Uri, webviewPanel: vscode.WebviewPanel): Promise<void>;
+    handleReturnToSpectrum(uri: vscode.Uri, webviewPanel: vscode.WebviewPanel): Promise<void>;
 }
 
 /**
@@ -61,6 +63,14 @@ export class WebviewMessageHandler {
                     
                 case 'updateSpectrum':
                     await this.handler.handleUpdateSpectrum(document.uri, message.wavelengthColumn, message.fluxColumn, webviewPanel);
+                    break;
+                    
+                case 'showTable':
+                    await this.handler.handleShowTable(document.uri, webviewPanel);
+                    break;
+                    
+                case 'returnToSpectrum':
+                    await this.handler.handleReturnToSpectrum(document.uri, webviewPanel);
                     break;
                     
                 default:

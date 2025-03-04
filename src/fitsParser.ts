@@ -4,7 +4,37 @@
  */
 
 import { HDUType, TableData } from './models/FITSDataManager';
-import { ColumnData } from './models/FITSDataManager';
+import { ColumnData as ImportedColumnData } from './models/FITSDataManager';
+
+// 基础列数据接口
+export interface BaseColumnData {
+    name: string;
+    format: string;
+    unit: string;
+    dataType: string;
+    repeatCount: number;
+}
+
+// 数值类型列数据接口
+export interface NumericColumnData extends BaseColumnData {
+    data: Float32Array | Float64Array | Int8Array | Int16Array | Int32Array;
+    getValue(index: number): number | number[];
+}
+
+// 字符串类型列数据接口
+export interface StringColumnData extends BaseColumnData {
+    data: string[];  // 改为直接存储字符串数组
+    getValue(index: number): string;
+}
+
+// 布尔类型列数据接口
+export interface BooleanColumnData extends BaseColumnData {
+    data: boolean[] | boolean[][];  // 修改为支持一维或二维数组
+    getValue(index: number): boolean;
+}
+
+// 统一的列数据类型
+export type ColumnData = NumericColumnData | StringColumnData | BooleanColumnData;
 
 // 常量定义
 const READONLY = 0;
@@ -179,6 +209,26 @@ class FitsBuffer {
     public getView(): DataView {
         return this.view;
     }
+}
+
+// 修改接口定义，继承Float32Array的所有属性
+export interface TableResult extends Float32Array {
+    columns: Map<string, ColumnData>;
+    getColumnValue(columnName: string, index: number): string | number;
+    isStringColumn(columnName: string): boolean;
+}
+
+// 修改列信息的接口定义
+interface ColumnInfo {
+    name: string;
+    format: string;
+    unit: string;
+    dataType: string;
+    repeatCount: number;
+    byteOffset: number;
+    byteSize: number;
+    data: any;  // 使用 any 类型，因为可能是数值数组或字符串数组
+    isString: boolean;
 }
 
 // FITS文件解析器
@@ -594,7 +644,7 @@ export class FITSParser {
         return data;
     }
 
-    private parseBinaryTable(offset: number, header: FITSHeader, availableBytes: number): Float32Array {
+    private parseBinaryTable(offset: number, header: FITSHeader, availableBytes: number): TableResult {
         if (!this.buffer) throw new Error('Buffer not initialized');
         
         console.log('开始解析二进制表格数据');
@@ -609,20 +659,17 @@ export class FITSParser {
         
         if (!naxis1 || !naxis2 || !tfields) {
             console.error('二进制表格缺少必要的头信息');
-            return new Float32Array(0);
+            const errorResult = new Float32Array(0) as TableResult;
+            Object.defineProperties(errorResult, {
+                columns: { value: new Map(), writable: true },
+                getColumnValue: { value: () => '', writable: true },
+                isStringColumn: { value: () => false, writable: true }
+            });
+            return errorResult;
         }
 
         // 解析列信息
-        const columns = new Map<string, {
-            name: string;
-            format: string;
-            unit: string;
-            dataType: string;
-            repeatCount: number;
-            byteOffset: number;
-            byteSize: number;
-            data: Float32Array | Float64Array | Int8Array | Int16Array | Int32Array;
-        }>();
+        const columns = new Map<string, ColumnInfo>();
 
         let currentOffset = 0;
         
@@ -650,11 +697,13 @@ export class FITSParser {
             // 确定数据类型的字节大小和对应的TypedArray
             let byteSize: number;
             let ArrayType: any;
+            let isString = false;
             
             switch (dataType) {
                 case 'L':  // Logical
                     byteSize = 1;
-                    ArrayType = Int8Array;
+                    ArrayType = null;  // 不使用TypedArray
+                    isString = false;
                     break;
                 case 'X':  // Bit
                     byteSize = 1;
@@ -678,7 +727,7 @@ export class FITSParser {
                     break;
                 case 'A':  // Character
                     byteSize = 1;
-                    ArrayType = Int8Array; // 使用Int8Array存储字符
+                    isString = true;
                     break;
                 case 'E':  // Single-precision floating point
                     byteSize = 4;
@@ -711,7 +760,9 @@ export class FITSParser {
 
             // 为每列创建适当大小的数组
             const arraySize = naxis2 * repeatCount;
-            const columnData = new ArrayType(arraySize);
+            const columnData = dataType === 'L' ? new Array(arraySize).fill(false) :
+                              isString ? new Array(naxis2) :
+                              new ArrayType(arraySize);
 
             columns.set(ttype, {
                 name: ttype,
@@ -721,7 +772,8 @@ export class FITSParser {
                 repeatCount,
                 byteOffset: currentOffset,
                 byteSize,
-                data: columnData
+                data: columnData,
+                isString: isString
             });
 
             currentOffset += byteSize * repeatCount;
@@ -745,10 +797,16 @@ export class FITSParser {
                             let value: number;
                             switch (column.dataType) {
                                 case 'L': // Logical
-                                    value = this.buffer.readInt8();
-                                    // 转换为布尔值的数值表示：0(F)=0, 非0(T)=1
-                                    value = value === 0 ? 0 : 1;
-                                    break;
+                                    // 读取原始字节值
+                                    const rawByte = this.buffer.readInt8();
+                                    // 根据FITS标准，'T'和非零值表示true，'F'和零值表示false
+                                    const boolValue = rawByte === 84 || (rawByte !== 0 && rawByte !== 70);  // 84是'T'的ASCII码，70是'F'的ASCII码
+                                    if (column.isString) {
+                                        column.data[row] = boolValue ? 'True' : 'False';
+                                    } else {
+                                        column.data[dataIndex] = boolValue;
+                                    }
+                                    continue;  // 跳过value赋值
                                 case 'X': // Bit
                                     // 对于位数据类型，需要特殊处理
                                     // 在FITS中，位数据是按字节存储的，每个字节包含8个位
@@ -783,10 +841,17 @@ export class FITSParser {
                                     value = this.buffer.readInt64();
                                     break;
                                 case 'A': // Character
-                                    // 读取一个字符并转换为ASCII码
-                                    const charStr = this.buffer.readString(1);
-                                    value = charStr.length > 0 ? charStr.charCodeAt(0) : 0;
-                                    break;
+                                    // 读取完整的字符串
+                                    const rawStr = this.buffer.readString(column.repeatCount);
+                                    // 只清理末尾的控制字符和不可见字符
+                                    const strValue = rawStr.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]+$/, '');
+                                    // 直接存储处理后的字符串
+                                    if (column.isString) {
+                                        column.data[row] = strValue;
+                                    }
+                                    // 跳过已处理的字符
+                                    r += column.repeatCount - 1;
+                                    continue;  // 使用continue跳过value的赋值
                                 case 'E': // Single-precision floating point
                                     value = this.buffer.readFloat32();
                                     break;
@@ -839,35 +904,126 @@ export class FITSParser {
 
             // 输出每列的一些示例数据
             for (const [name, column] of columns) {
-                console.log(`列 ${name} 的前10个数据:`, Array.from(column.data.slice(0, 10)));
+                if (column.isString) {
+                    // 对于字符串类型，输出字符串值
+                    console.log(`列 ${name} 的前10个数据:`, column.data.slice(0, 10));
+                } else if (column.dataType === 'L') {
+                    // 对于布尔类型，需要特殊处理数组情况
+                    const sampleData = column.repeatCount === naxis2 ?
+                        column.data.slice(0, 10) :
+                        Array.from({ length: Math.min(10, naxis2) }, (_, i) => 
+                            column.data.slice(i * column.repeatCount, (i + 1) * column.repeatCount));
+                    console.log(`列 ${name} 的前10个数据:`, sampleData);
+                } else {
+                    // 对于数值类型，需要特殊处理数组情况
+                    const sampleData = column.repeatCount === naxis2 ?
+                        Array.from(column.data.slice(0, 10)) :
+                        Array.from({ length: Math.min(10, naxis2) }, (_, i) => 
+                            Array.from(column.data.slice(i * column.repeatCount, (i + 1) * column.repeatCount)));
+                    console.log(`列 ${name} 的前10个数据:`, sampleData);
+                }
             }
 
             // 创建一个包含所有列数据的Map
             const columnsData = new Map<string, ColumnData>();
             for (const [name, column] of columns) {
-                columnsData.set(name, {
-                    name: column.name,
-                    data: column.data,
-                    format: column.format,
-                    unit: column.unit,
-                    dataType: column.dataType,
-                    repeatCount: column.repeatCount
-                });
+                if (column.dataType === 'L') {
+                    // 对于布尔类型，创建 BooleanColumnData
+                    const booleanColumn: BooleanColumnData = {
+                        name: column.name,
+                        data: column.repeatCount === naxis2 ? 
+                            column.data as boolean[] :
+                            Array.from({ length: naxis2 }, (_, i) => 
+                                (column.data as boolean[]).slice(i * column.repeatCount, (i + 1) * column.repeatCount)),
+                        format: column.format,
+                        unit: column.unit,
+                        dataType: column.dataType,
+                        repeatCount: column.repeatCount,
+                        getValue(index: number): boolean {
+                            if (Array.isArray(this.data[index])) {
+                                return (this.data[index] as boolean[])[0];
+                            }
+                            return this.data[index] as boolean;
+                        }
+                    };
+                    columnsData.set(name, booleanColumn);
+                } else if (column.isString) {
+                    // 对于字符串类型，创建 StringColumnData
+                    const stringColumn: StringColumnData = {
+                        name: column.name,
+                        data: column.data as string[],  // 字符串类型已经正确处理了repeatCount
+                        format: column.format,
+                        unit: column.unit,
+                        dataType: column.dataType,
+                        repeatCount: column.repeatCount,
+                        getValue(index: number): string {
+                            return this.data[index] || '';
+                        }
+                    };
+                    columnsData.set(name, stringColumn);
+                } else {
+                    // 对于数值类型，创建 NumericColumnData
+                    const numericColumn: NumericColumnData = {
+                        name: column.name,
+                        data: column.repeatCount === naxis2 ?
+                            column.data as Float32Array :
+                            new Float32Array(column.data as Float32Array),  // 保持原始数据结构
+                        format: column.format,
+                        unit: column.unit,
+                        dataType: column.dataType,
+                        repeatCount: column.repeatCount,
+                        getValue(index: number): number | number[] {
+                            if (this.repeatCount === naxis2) {
+                                return this.data[index];
+                            } else {
+                                // 返回该行的所有数据
+                                return Array.from(this.data.slice(
+                                    index * this.repeatCount, 
+                                    (index + 1) * this.repeatCount
+                                ));
+                            }
+                        }
+                    };
+                    columnsData.set(name, numericColumn);
+                }
             }
 
             // 为了保持向后兼容，我们仍然返回第一列数据作为主数据
             const firstColumn = Array.from(columns.values())[0];
             if (!firstColumn) {
-                return new Float32Array(0);
+                const emptyResult = new Float32Array(0) as TableResult;
+                Object.defineProperties(emptyResult, {
+                    columns: { value: new Map(), writable: true },
+                    getColumnValue: { value: () => '', writable: true },
+                    isStringColumn: { value: () => false, writable: true }
+                });
+                return emptyResult;
             }
 
-            // 将第一列数据转换为Float32Array并返回，同时在data属性中包含所有列数据
-            const result = new Float32Array(firstColumn.data);
-            Object.defineProperty(result, 'columns', {
-                value: columnsData,
-                enumerable: true,
-                configurable: true,
-                writable: true
+            // 创建基础数组，确保长度正确
+            const baseArray = firstColumn.repeatCount === naxis2 ?
+                new Float32Array(firstColumn.data) :
+                new Float32Array(naxis2);
+            const result = baseArray as TableResult;
+            
+            // 添加额外的属性
+            Object.defineProperties(result, {
+                columns: { value: columnsData, writable: true },
+                getColumnValue: {
+                    value: function(columnName: string, index: number): string | number | number[] {
+                        const column = this.columns.get(columnName);
+                        if (!column) return '';
+                        return column.getValue(index);
+                    },
+                    writable: true
+                },
+                isStringColumn: {
+                    value: function(columnName: string): boolean {
+                        const column = this.columns.get(columnName);
+                        return column?.dataType === 'A';
+                    },
+                    writable: true
+                }
             });
 
             return result;
@@ -878,7 +1034,13 @@ export class FITSParser {
                 console.error('错误详情:', error.message);
                 console.error('调用栈:', error.stack);
             }
-            return new Float32Array(0);
+            const errorResult = new Float32Array(0) as TableResult;
+            Object.defineProperties(errorResult, {
+                columns: { value: new Map(), writable: true },
+                getColumnValue: { value: () => '', writable: true },
+                isStringColumn: { value: () => false, writable: true }
+            });
+            return errorResult;
         }
     }
 } 

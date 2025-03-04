@@ -13,6 +13,151 @@
                 const { default: ImageViewer } = await import('./image-viewer.js');
                 const { default: SpectrumViewer } = await import('./spectrum-viewer.js');
                 
+                // 格式化表格中的值
+                function formatValue(value, dataType) {
+                    console.log('formatValue input:', {
+                        value,
+                        type: typeof value,
+                        isArray: Array.isArray(value),
+                        isTypedArray: ArrayBuffer.isView(value),
+                        dataType,
+                        constructor: value?.constructor?.name
+                    });
+
+                    if (value === null || value === undefined) {
+                        return '';
+                    }
+
+                    // 处理布尔类型
+                    if (typeof value === 'boolean' || dataType === 'L') {
+                        return value.toString();
+                    }
+                    
+                    // 处理数组类型
+                    if (Array.isArray(value) || ArrayBuffer.isView(value)) {
+                        // 如果是TypedArray，转换为普通数组
+                        const arr = Array.from(value);
+                        console.log('Array processing:', {
+                            originalValue: value,
+                            convertedArray: arr,
+                            length: arr.length
+                        });
+                        // 对数组中的每个值进行格式化
+                        return arr.map(v => {
+                            if (typeof v === 'number') {
+                                return Number.isInteger(v) ? v.toString() : v.toFixed(6);
+                            }
+                            return v.toString().trim();
+                        }).join(', ');
+                    }
+                    
+                    // 处理字符串类型
+                    if (dataType === 'A' || dataType.startsWith('A')) {
+                        return value.toString().trim();
+                    }
+                    
+                    // 处理数值类型
+                    if (typeof value === 'number') {
+                        // 对于非整数，保留6位小数
+                        return Number.isInteger(value) ? value.toString() : value.toFixed(6);
+                    }
+                    
+                    return value.toString();
+                }
+
+                // 表格排序功能
+                let currentSortColumn = null;
+                let isAscending = true;
+
+                function sortTable(columnName) {
+                    const table = document.getElementById('fits-table');
+                    const tbody = table.querySelector('tbody');
+                    const rows = Array.from(tbody.querySelectorAll('tr'));
+                    const headers = table.querySelectorAll('th');
+                    
+                    // 移除所有排序标记
+                    headers.forEach(header => {
+                        header.classList.remove('sorted-asc', 'sorted-desc');
+                    });
+                    
+                    // 如果点击的是当前排序列，则反转排序方向
+                    if (columnName === currentSortColumn) {
+                        isAscending = !isAscending;
+                    } else {
+                        currentSortColumn = columnName;
+                        isAscending = true;
+                    }
+                    
+                    // 添加排序标记
+                    const header = table.querySelector(`th[data-column="${columnName}"]`);
+                    header.classList.add(isAscending ? 'sorted-asc' : 'sorted-desc');
+                    
+                    // 获取列索引
+                    const columnIndex = Array.from(headers).findIndex(h => h.getAttribute('data-column') === columnName);
+                    
+                    // 排序行
+                    rows.sort((a, b) => {
+                        const aValue = a.cells[columnIndex].textContent;
+                        const bValue = b.cells[columnIndex].textContent;
+                        
+                        // 尝试数字比较
+                        const aNum = parseFloat(aValue);
+                        const bNum = parseFloat(bValue);
+                        
+                        if (!isNaN(aNum) && !isNaN(bNum)) {
+                            return isAscending ? aNum - bNum : bNum - aNum;
+                        }
+                        
+                        // 字符串比较
+                        return isAscending ? 
+                            aValue.localeCompare(bValue) : 
+                            bValue.localeCompare(aValue);
+                    });
+                    
+                    // 重新插入排序后的行
+                    rows.forEach(row => tbody.appendChild(row));
+                }
+
+                // 处理表格数据
+                function processTableData(data) {
+                    console.log('Processing table data:', data);
+                    const { columns, rows } = data;
+                    
+                    // 清空表头和表体
+                    const thead = document.querySelector('#fits-table thead tr');
+                    const tbody = document.querySelector('#fits-table tbody');
+                    thead.innerHTML = '';
+                    tbody.innerHTML = '';
+                    
+                    // 添加表头
+                    columns.forEach(col => {
+                        const th = document.createElement('th');
+                        th.textContent = `${col.name}${col.unit ? ` (${col.unit})` : ''}`;
+                        th.setAttribute('data-column', col.name);
+                        th.addEventListener('click', () => sortTable(col.name));
+                        thead.appendChild(th);
+                    });
+                    
+                    // 添加表格数据
+                    rows.forEach((row, rowIndex) => {
+                        console.log(`Processing row ${rowIndex}:`, row);
+                        const tr = document.createElement('tr');
+                        columns.forEach(col => {
+                            const td = document.createElement('td');
+                            const value = row[col.name];
+                            console.log(`Column ${col.name}:`, {
+                                value,
+                                type: typeof value,
+                                isArray: Array.isArray(value),
+                                isTypedArray: ArrayBuffer.isView(value)
+                            });
+                            td.textContent = value !== null ? formatValue(value, col.dataType) : '';
+                            tr.appendChild(td);
+                        });
+                        tbody.appendChild(tr);
+                    });
+                }
+
                 // 初始化图像查看器和光谱查看器
                 const imageViewer = new ImageViewer();
                 const spectrumViewer = new SpectrumViewer();
@@ -105,6 +250,51 @@
                     });
                 }
                 
+                // 导出CSV功能
+                document.getElementById('export-table-button').addEventListener('click', () => {
+                    const table = document.getElementById('fits-table');
+                    const headers = Array.from(table.querySelectorAll('thead th'))
+                        .map(th => th.getAttribute('data-column'));
+                    
+                    const rows = Array.from(table.querySelectorAll('tbody tr'))
+                        .map(row => Array.from(row.cells).map(cell => cell.textContent));
+                    
+                    const csvContent = [
+                        headers.join(','),
+                        ...rows.map(row => row.join(','))
+                    ].join('\n');
+                    
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = 'fits_table_data.csv';
+                    link.click();
+                });
+
+                // 添加显示表格按钮事件监听
+                document.getElementById('show-table-button').addEventListener('click', () => {
+                    vscode.postMessage({
+                        command: 'showTable'
+                    });
+                });
+                
+                // 返回光谱按钮点击事件
+                document.getElementById('return-spectrum-button')?.addEventListener('click', () => {
+                    // 隐藏表格容器
+                    document.querySelector('.table-container').style.display = 'none';
+                    // 显示图像容器（因为光谱canvas在图像容器内）
+                    document.querySelector('.image-container').style.display = 'flex';
+                    // 显示光谱canvas
+                    document.getElementById('spectrum-canvas').style.display = 'block';
+                    // 隐藏图像canvas和占位符
+                    document.getElementById('fits-canvas').style.display = 'none';
+                    document.getElementById('image-placeholder').style.display = 'none';
+                    // 发送返回光谱消息
+                    vscode.postMessage({
+                        command: 'returnToSpectrum'
+                    });
+                });
+                
                 // 监听来自扩展的消息
                 window.addEventListener('message', event => {
                     const message = event.data;
@@ -183,7 +373,11 @@
                             
                         case 'showSpectrum':
                             log('收到显示光谱的命令');
-                            // 隐藏图像Canvas，显示光谱Canvas
+                            // 隐藏表格容器
+                            document.querySelector('.table-container').style.display = 'none';
+                            // 显示图像容器
+                            document.querySelector('.image-container').style.display = 'flex';
+                            // 显示光谱canvas，隐藏其他
                             document.getElementById('fits-canvas').style.display = 'none';
                             document.getElementById('spectrum-canvas').style.display = 'block';
                             document.getElementById('image-placeholder').style.display = 'none';
@@ -214,6 +408,23 @@
                             // 设置光谱列选择器的可见性
                             document.getElementById('spectrum-column-selectors').style.display = 
                                 message.showSpectrumControls ? 'flex' : 'none';
+                            break;
+
+                        case 'setTableData':
+                            // 处理表格数据
+                            if (message.data) {
+                                processTableData(message.data);
+                            }
+                            break;
+
+                        case 'showTableView':
+                            // 显示表格视图
+                            document.querySelector('.table-container').style.display = 'flex';
+                            document.querySelector('.image-container').style.display = 'none';
+                            document.getElementById('fits-canvas').style.display = 'none';
+                            document.getElementById('spectrum-canvas').style.display = 'none';
+                            document.getElementById('image-placeholder').style.display = 'none';
+
                             break;
                     }
                 });
@@ -320,6 +531,7 @@
                     </div>
                     <div style="display: flex; align-items: center; margin-left: 15px;">
                         <button id="zoom-box-button" style="background-color: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 3px 8px; border-radius: 2px; cursor: pointer;">放大</button>
+                        <button id="show-table-button" style="background-color: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 3px 8px; border-radius: 2px; cursor: pointer; margin-left: 8px;">显示表格</button>
                     </div>
                 </div>
                 
@@ -334,7 +546,7 @@
         </div>
     </div>
     
-    <!-- 第四行：图像显示区 -->
+    <!-- 第四行：图像/表格显示区 -->
     <div class="image-container">
         <canvas id="fits-canvas" class="image-display"></canvas>
         <canvas id="spectrum-canvas" class="spectrum-display" style="display: none;"></canvas>
@@ -346,6 +558,22 @@
     <!-- 添加状态栏 -->
     <div class="status-bar">
         <div id="status-info">准备就绪</div>
+    </div>
+
+    <!-- 第四行：图像/表格显示区 -->
+    <div class="table-container" style="display: none;">
+        <div class="table-toolbar">
+            <button id="export-table-button" class="table-button">导出CSV</button>
+            <button id="return-spectrum-button" class="table-button" style="margin-left: 10px;">返回光谱</button>
+        </div>
+        <div class="table-wrapper">
+            <table id="fits-table">
+                <thead>
+                    <tr></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
     </div>
 </body>
 </html> 

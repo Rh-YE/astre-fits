@@ -251,8 +251,6 @@ body {
     max-width: 80%;
 }
 
-
-
 .preview-viewport {
     position: absolute;
     border: 2px solid #ff5500;
@@ -410,4 +408,111 @@ h3 {
     border-top: 1px solid var(--vscode-statusBar-border);
     height: 22px;
     align-items: center;
+}
+
+/* 表格容器样式 */
+.table-container {
+    flex: 1;
+    overflow: auto;
+    background-color: var(--vscode-panel-background);
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+}
+
+.table-toolbar {
+    padding: 5px 0;
+    margin-bottom: 10px;
+}
+
+.table-button {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: none;
+    padding: 5px 10px;
+    border-radius: 2px;
+    cursor: pointer;
+}
+
+.table-button:hover {
+    background-color: var(--vscode-button-hoverBackground);
+}
+
+.table-wrapper {
+    overflow: auto;
+    flex: 1;
+}
+
+#fits-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+#fits-table th {
+    background-color: var(--vscode-sidebar-background);
+    color: var(--vscode-foreground);
+    padding: 8px;
+    text-align: left;
+    border: 1px solid var(--vscode-border);
+    cursor: pointer;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+#fits-table th:hover {
+    background-color: var(--vscode-list-hoverBackground);
+}
+
+#fits-table th.sorted-asc::after {
+    content: ' ▲';
+    font-size: 0.8em;
+}
+
+#fits-table th.sorted-desc::after {
+    content: ' ▼';
+    font-size: 0.8em;
+}
+
+#fits-table td {
+    padding: 6px 8px;
+    border: 1px solid var(--vscode-border);
+    color: var(--vscode-foreground);
+}
+
+#fits-table tr:nth-child(even) {
+    background-color: var(--vscode-list-hoverBackground);
+}
+
+#fits-table tr:hover {
+    background-color: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+}
+
+/* 表格分页样式 */
+.table-pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 10px 0;
+    gap: 10px;
+}
+
+.table-pagination button {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: none;
+    padding: 3px 8px;
+    border-radius: 2px;
+    cursor: pointer;
+}
+
+.table-pagination button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.table-pagination span {
+    color: var(--vscode-foreground);
 } 
