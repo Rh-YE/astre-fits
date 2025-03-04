@@ -788,6 +788,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             // Send show table command | 发送显示表格命令
             webviewPanel.webview.postMessage({
                 command: 'showTableView',
+                isSpectralData: true,
                 data: {
                     columns: columnsInfo,
                     rows: rows

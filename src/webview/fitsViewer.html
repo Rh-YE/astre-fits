@@ -442,8 +442,8 @@
                             document.getElementById('spectrum-canvas').style.display = 'block';
                             document.getElementById('image-placeholder').style.display = 'none';
                             
-                            // Hide table operation buttons | 隐藏表格操作按钮
-                            document.querySelector('.table-button').parentElement.style.display = 'none';
+                            // Hide return spectrum button | 隐藏返回光谱按钮
+                            document.getElementById('return-spectrum-button').style.display = 'none';
                             
                             // Clear WCS info | 清空WCS信息
                             document.getElementById('wcs-value-1').textContent = '-';
@@ -487,6 +487,8 @@
                             document.getElementById('fits-canvas').style.display = 'none';
                             document.getElementById('spectrum-canvas').style.display = 'none';
                             document.getElementById('image-placeholder').style.display = 'none';
+                            // Show button container | 显示按钮容器
+                            document.querySelector('.table-button').parentElement.style.display = 'flex';
                             // Show spectrum return button if needed | 如果需要则显示返回光谱按钮
                             document.getElementById('return-spectrum-button').style.display = 
                                 message.isSpectralData ? 'block' : 'none';
