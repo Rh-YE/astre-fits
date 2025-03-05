@@ -15,6 +15,10 @@ class ImageViewer {
         this.lastPanOffsetX = 0;          // Last X pan offset | 上次平移的X偏移量
         this.lastPanOffsetY = 0;          // Last Y pan offset | 上次平移的Y偏移量
         
+        // Display control variables | 显示控制变量
+        this.biasValue = 0.5;             // Bias value | 偏差值
+        this.contrastValue = 1.0;         // Contrast value | 对比度值
+        
         // Multi-dimensional data related variables | 多维数据相关变量
         this.currentChannel = 0;          // Current channel index | 当前显示的通道索引
         this.maxChannel = 0;              // Maximum number of channels | 最大通道数
@@ -28,6 +32,12 @@ class ImageViewer {
         this.channelSlider = document.getElementById('channel-slider');   // Channel selection slider | 通道选择滑块
         this.channelValue = document.getElementById('channel-value');     // Channel value display element | 通道值显示元素
         this.axesOrderSelector = document.getElementById('axes-order-selector'); // Axes order selector | 轴顺序选择器
+        
+        // Get bias and contrast elements | 获取偏差和对比度元素
+        this.biasSlider = document.getElementById('bias-slider');
+        this.contrastSlider = document.getElementById('contrast-slider');
+        this.biasValueDisplay = document.getElementById('bias-value');
+        this.contrastValueDisplay = document.getElementById('contrast-value');
         
         // Initialize event listeners | 初始化事件监听
         this.initEventListeners();
@@ -58,6 +68,15 @@ class ImageViewer {
         // Axes order selector event | 轴顺序选择器事件
         if (this.axesOrderSelector) {
             this.axesOrderSelector.addEventListener('change', this.handleAxesOrderChange.bind(this));
+        }
+        
+        // Bias and contrast slider events | 偏差和对比度滑块事件
+        if (this.biasSlider) {
+            this.biasSlider.addEventListener('input', this.handleBiasSliderInput.bind(this));
+        }
+        
+        if (this.contrastSlider) {
+            this.contrastSlider.addEventListener('input', this.handleContrastSliderInput.bind(this));
         }
         
         // Create ResizeObserver to monitor container size changes | 创建ResizeObserver监听容器大小变化
@@ -414,9 +433,6 @@ class ImageViewer {
         const tempCtx = tempCanvas.getContext('2d');
         const imageData = tempCtx.createImageData(this.currentImageData.width, this.currentImageData.height);
         
-        // Calculate scale factor | 计算缩放因子
-        const scale = 255 / (this.currentImageData.max - this.currentImageData.min);
-        
         try {
             // Use TypedArray and vectorized operations to process image data | 使用 TypedArray 和向量化操作处理图像数据
             const pixelCount = this.currentImageData.width * this.currentImageData.height;
@@ -424,8 +440,15 @@ class ImageViewer {
             
             // Vectorized processing - calculate all pixel values at once | 向量化处理 - 一次性计算所有像素值
             for (let i = 0; i < pixelCount; i++) {
-                // Calculate scaled grayscale value | 计算缩放后的灰度值
-                const scaledValue = Math.max(0, Math.min(255, Math.round((this.currentImageData.data[i] - this.currentImageData.min) * scale)));
+                // Apply bias and contrast to normalized value | 对归一化值应用偏差和对比度
+                const normalizedValue = this.applyBiasAndContrast(
+                    this.currentImageData.data[i],
+                    this.currentImageData.min,
+                    this.currentImageData.max
+                );
+                
+                // Convert to 8-bit value | 转换为8位值
+                const scaledValue = Math.round(normalizedValue * 255);
                 
                 // Set RGBA values (grayscale image, R=G=B) | 设置 RGBA 值 (灰度图像，R=G=B)
                 const idx = i * 4;
@@ -661,6 +684,37 @@ class ImageViewer {
             this.canvas.style.display = 'none';
             document.getElementById('image-placeholder').style.display = 'block';
         }
+    }
+    
+    // Handle bias slider input | 处理偏差滑块输入
+    handleBiasSliderInput() {
+        this.biasValue = parseFloat(this.biasSlider.value);
+        this.biasValueDisplay.textContent = this.biasValue.toFixed(2);
+        this.renderWithTransform();
+    }
+    
+    // Handle contrast slider input | 处理对比度滑块输入
+    handleContrastSliderInput() {
+        this.contrastValue = parseFloat(this.contrastSlider.value);
+        this.contrastValueDisplay.textContent = this.contrastValue.toFixed(1);
+        this.renderWithTransform();
+    }
+    
+    // Apply bias and contrast to pixel value | 对像素值应用偏差和对比度
+    applyBiasAndContrast(value, min, max) {
+        // Normalize value to 0-1 range | 将值归一化到0-1范围
+        const normalizedValue = (value - min) / (max - min);
+        
+        // Apply bias | 应用偏差
+        let adjustedValue = normalizedValue - (this.biasValue - 0.5);
+        
+        // Apply contrast | 应用对比度
+        if (this.contrastValue !== 1.0) {
+            adjustedValue = Math.pow(adjustedValue, 1 / this.contrastValue);
+        }
+        
+        // Clamp value to 0-1 range | 将值限制在0-1范围内
+        return Math.max(0, Math.min(1, adjustedValue));
     }
 }
 

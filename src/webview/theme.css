@@ -223,6 +223,40 @@ body {
     border-color: var(--vscode-list-activeSelectionBackground);
 }
 
+/* Scale controls sliders styles | 缩放控制滑块样式 */
+.scale-controls-sliders {
+    display: flex;
+    align-items: center;
+    margin-left: 15px;
+    padding-left: 15px;
+    border-left: 1px solid var(--vscode-border);
+}
+
+.slider-container {
+    display: flex;
+    align-items: center;
+    margin-right: 15px;
+}
+
+.slider-container label {
+    margin-right: 8px;
+    color: var(--vscode-foreground);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.slider-container input[type="range"] {
+    width: 100px;
+    margin: 0 8px;
+    background-color: var(--vscode-input-background);
+}
+
+.slider-container span {
+    min-width: 30px;
+    color: var(--vscode-input-foreground);
+    font-size: 12px;
+}
+
 /* Image display area styles | 图像显示区样式 */
 .image-container {
     flex: 1 1 auto;

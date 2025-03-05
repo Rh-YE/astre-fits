@@ -588,6 +588,19 @@
                     <div class="scale-button" data-scale="histogram">histogram</div>
                     <div class="scale-button" data-scale="minmax">min max</div>
                     <div class="scale-button" data-scale="zscale">zscale</div>
+                    <!-- Bias and contrast controls | 偏差和对比度控制 -->
+                    <div class="scale-controls-sliders">
+                        <div class="slider-container">
+                            <label for="bias-slider">偏差:</label>
+                            <input type="range" id="bias-slider" min="0" max="1" step="0.01" value="0.5">
+                            <span id="bias-value">0.5</span>
+                        </div>
+                        <div class="slider-container">
+                            <label for="contrast-slider">对比度:</label>
+                            <input type="range" id="contrast-slider" min="0" max="10" step="0.1" value="1">
+                            <span id="contrast-value">1.0</span>
+                        </div>
+                    </div>
                 </div>
                 
                 <!-- Spectrum column selectors - hidden by default | 光谱列选择器 - 默认隐藏 -->
