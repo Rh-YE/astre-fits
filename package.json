@@ -3,6 +3,7 @@
   "displayName": "astre.fits",
   "description": "FITS文件查看器扩展",
   "version": "0.0.3",
+  "publisher": "RenhaoYe",
   "repository": {
     "type": "git",
     "url": "https://github.com/rh/astre-fits.git"
