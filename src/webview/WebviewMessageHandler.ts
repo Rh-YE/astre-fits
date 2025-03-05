@@ -72,6 +72,11 @@ export class WebviewMessageHandler {
                 case 'returnToSpectrum':
                     await this.handler.handleReturnToSpectrum(document.uri, webviewPanel);
                     break;
+
+                case 'transformTypeResponse':
+                case 'scaleValuesResponse':
+                    // These are responses to extension queries, no handler needed
+                    break;
                     
                 default:
                     this.logger.warn(`Unknown webview message command: ${message.command} | 未知的webview消息命令: ${message.command}`);

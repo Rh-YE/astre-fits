@@ -300,24 +300,28 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
 
             // Get transform type from active button | 获取变换类型
             const transformType = await new Promise<string>((resolve) => {
-                webviewPanel.webview.onDidReceiveMessage(message => {
+                const messageHandler = (message: any) => {
                     if (message.command === 'transformTypeResponse') {
+                        webviewPanel.webview.onDidReceiveMessage(messageHandler);
                         resolve(message.transformType || 'linear');
                     }
-                });
+                };
+                webviewPanel.webview.onDidReceiveMessage(messageHandler);
                 webviewPanel.webview.postMessage({ command: 'getTransformType' });
             });
 
             // Get bias and contrast values | 获取偏差和对比度值
             const { biasValue, contrastValue } = await new Promise<{biasValue: number, contrastValue: number}>((resolve) => {
-                webviewPanel.webview.onDidReceiveMessage(message => {
+                const messageHandler = (message: any) => {
                     if (message.command === 'scaleValuesResponse') {
+                        webviewPanel.webview.onDidReceiveMessage(messageHandler);
                         resolve({
                             biasValue: message.biasValue || 0.5,
                             contrastValue: message.contrastValue || 1.0
                         });
                     }
-                });
+                };
+                webviewPanel.webview.onDidReceiveMessage(messageHandler);
                 webviewPanel.webview.postMessage({ command: 'getScaleValues' });
             });
 
@@ -332,8 +336,9 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             
             // Create temporary file | 创建临时文件
             const metadataBuffer = Buffer.from(JSON.stringify({
-                width: hduData.width,
-                height: hduData.height,
+                width: transformResult.width,
+                height: transformResult.height,
+                depth: transformResult.depth,
                 min: transformResult.min,
                 max: transformResult.max,
                 scaleType: scaleType

@@ -248,7 +248,10 @@ export class FITSDataProcessor {
     ): Promise<{
         data: Float32Array,
         min: number,
-        max: number
+        max: number,
+        width?: number,
+        height?: number,
+        depth?: number
     }> {
         if (hduData.type !== HDUType.IMAGE) {
             throw new Error('Scale transform can only be applied to image type HDU / 只能对图像类型的HDU应用缩放变换');
@@ -285,10 +288,14 @@ export class FITSDataProcessor {
         // Clip values / 裁剪值
         this.clipImage(transformedData);
 
+        // Return result with preserved dimensions / 返回结果并保留维度信息
         return {
             data: transformedData,
             min: 0,
-            max: 1
+            max: 1,
+            width: hduData.width,
+            height: hduData.height,
+            depth: (hduData as any).depth
         };
     }
 } 
