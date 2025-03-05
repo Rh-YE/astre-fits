@@ -93,17 +93,37 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
     private webviewService: WebviewService;
     private currentFileUri: vscode.Uri | undefined;
     private currentHDUIndex = new Map<string, number>();
+    private disposables: vscode.Disposable[] = [];
 
     constructor(
         private readonly context: vscode.ExtensionContext
     ) {
         this.logger = Logger.getInstance();
         this.logger.setLogLevel(LogLevel.INFO);
-        // this.logger.info('FitsViewerProvider created');
         
         this.dataManager = FITSDataManager.getInstance(context);
         this.loadingManager = LoadingManager.getInstance();
         this.webviewService = new WebviewService(context);
+
+        // Register cleanup on extension deactivation
+        context.subscriptions.push({
+            dispose: () => {
+                this.dispose();
+            }
+        });
+    }
+
+    // Add dispose method
+    private dispose(): void {
+        // Dispose all disposables
+        this.disposables.forEach(d => d.dispose());
+        this.disposables = [];
+
+        // Clear all caches
+        if (this.currentFileUri) {
+            this.dataManager.clearCache(this.currentFileUri);
+            this.currentFileUri = undefined;
+        }
     }
 
     async openCustomDocument(
@@ -128,31 +148,32 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
         webviewPanel: vscode.WebviewPanel,
         token: vscode.CancellationToken
     ): Promise<void> {
-        // this.logger.info('Resolving custom editor');
-        
-        // Configure webview | 配置webview
+        // Configure webview
         this.webviewService.configureWebview(webviewPanel.webview);
         
-        // Set HTML content | 设置HTML内容
+        // Set HTML content
         webviewPanel.webview.html = this.webviewService.getHtmlForWebview(webviewPanel.webview);
-        this.logger.debug('Webview HTML set');
         
-        // Create message handler | 创建消息处理器
+        // Create message handler
         const messageHandler = new WebviewMessageHandler(this);
         
-        // Handle webview messages | 处理webview消息
-        webviewPanel.webview.onDidReceiveMessage(message => {
+        // Handle webview messages
+        const messageDisposable = webviewPanel.webview.onDidReceiveMessage(message => {
             messageHandler.handleMessage(message, document, webviewPanel);
         });
         
-        // Clear cache when editor closes | 当编辑器关闭时清除缓存
-        webviewPanel.onDidDispose(() => {
+        // Clear cache when editor closes
+        const disposeListener = webviewPanel.onDidDispose(() => {
+            messageDisposable.dispose();
             if (document.uri) {
                 this.dataManager.clearCache(document.uri);
                 this.currentFileUri = undefined;
-                // this.logger.info(`Cache cleared for file: ${document.uri.fsPath}`);
             }
+            disposeListener.dispose();
         });
+
+        // Add to disposables
+        this.disposables.push(messageDisposable, disposeListener);
     }
 
     /**
@@ -706,14 +727,22 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                     const wavelengthUnit = wavelengthCol.unit;
                     const fluxUnit = fluxCol.unit;
 
-                    // Send spectral data | 发送光谱数据
+                    // Send spectrum data | 发送光谱数据
                     this.webviewService.sendSpectrumData(
                         webviewPanel.webview,
                         wavelengthData,
                         fluxData,
                         wavelengthUnit,
                         fluxUnit,
-                        columnsInfo,
+                        Array.from(hduData.columns as Map<string, ColumnData>).map(entry => {
+                            const [name, col] = entry;
+                            return {
+                                name,
+                                unit: col.unit,
+                                dataType: col.dataType,
+                                length: col.data.length
+                            };
+                        }),
                         wavelengthColumn,
                         fluxColumn
                     );
@@ -996,12 +1025,15 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                     fluxData,
                     wavelengthUnit,
                     fluxUnit,
-                    Array.from(hduData.columns.entries()).map(([name, col]: [string, any]) => ({
-                        name,
-                        unit: col.unit,
-                        dataType: col.dataType,
-                        length: col.data.length
-                    })),
+                    Array.from(hduData.columns as Map<string, ColumnData>).map(entry => {
+                        const [name, col] = entry;
+                        return {
+                            name,
+                            unit: col.unit,
+                            dataType: col.dataType,
+                            length: col.data.length
+                        };
+                    }),
                     wavelengthColumn,
                     fluxColumn
                 );

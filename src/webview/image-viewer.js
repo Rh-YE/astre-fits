@@ -52,6 +52,10 @@ class ImageViewer {
         
         // Initialize event listeners | 初始化事件监听
         this.initEventListeners();
+
+        // Add cleanup method
+        this.cleanup = this.cleanup.bind(this);
+        window.addEventListener('beforeunload', this.cleanup);
     }
     
     // Initialize event listeners | 初始化事件监听器
@@ -574,6 +578,14 @@ class ImageViewer {
     
     // Load image data | 加载图像数据
     loadImageData(rawData, prevZoomLevel, prevPanOffsetX, prevPanOffsetY, prevWidth, prevHeight) {
+        // Clear previous data
+        if (this.currentImageData) {
+            this.currentImageData = null;
+        }
+        if (this.originalImageData) {
+            this.originalImageData = null;
+        }
+
         if (!rawData || !rawData.data || !rawData.width || !rawData.height) {
             log('Invalid image data | 图像数据无效');
             return;
@@ -698,6 +710,14 @@ class ImageViewer {
     
     // Load image data from binary file | 从二进制文件加载图像数据
     async loadImageDataFromFile(fileUri, prevZoomLevel, prevPanOffsetX, prevPanOffsetY, prevWidth, prevHeight) {
+        // Clear previous data
+        if (this.currentImageData) {
+            this.currentImageData = null;
+        }
+        if (this.originalImageData) {
+            this.originalImageData = null;
+        }
+
         try {
             document.getElementById('image-placeholder').textContent = 'Loading image data...';
             
@@ -821,6 +841,46 @@ class ImageViewer {
 
         // Re-render image | 重新渲染图像
         this.renderWithTransform();
+    }
+
+    cleanup() {
+        // Remove event listeners
+        window.removeEventListener('beforeunload', this.cleanup);
+        this.imageContainer.removeEventListener('wheel', this.handleWheel);
+        this.imageContainer.removeEventListener('mousedown', this.handleMouseDown);
+        this.imageContainer.removeEventListener('mousemove', this.handleMouseMove);
+        this.imageContainer.removeEventListener('mouseleave', this.handleMouseLeave);
+        window.removeEventListener('mouseup', this.handleMouseUp);
+
+        if (this.channelSlider) {
+            this.channelSlider.removeEventListener('input', this.handleChannelSliderInput);
+        }
+
+        if (this.axesOrderSelector) {
+            this.axesOrderSelector.removeEventListener('change', this.handleAxesOrderChange);
+        }
+
+        if (this.biasSlider) {
+            this.biasSlider.removeEventListener('input', this.handleBiasSliderInput);
+        }
+
+        if (this.contrastSlider) {
+            this.contrastSlider.removeEventListener('input', this.handleContrastSliderInput);
+        }
+
+        // Stop resize observer
+        if (this.resizeObserver) {
+            this.resizeObserver.disconnect();
+        }
+
+        // Clear canvas
+        if (this.ctx) {
+            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        }
+
+        // Clear image data
+        this.currentImageData = null;
+        this.originalImageData = null;
     }
 }
 

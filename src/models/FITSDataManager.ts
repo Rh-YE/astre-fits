@@ -70,6 +70,7 @@ export class FITSDataManager {
     private loadingManager: LoadingManager;
     private cacheLock: Map<string, Promise<void>> = new Map();
     private tempDir: string;
+    private tempFiles: Set<string> = new Set(); // Track all temporary files
 
     private constructor(context: vscode.ExtensionContext) {
         this.tempDir = path.join(context.globalStorageUri.fsPath, 'fits-temp');
@@ -77,6 +78,13 @@ export class FITSDataManager {
             fs.mkdirSync(this.tempDir, { recursive: true });
         }
         this.loadingManager = LoadingManager.getInstance();
+
+        // Add cleanup on extension deactivation
+        context.subscriptions.push({
+            dispose: () => {
+                this.cleanupAllTempFiles();
+            }
+        });
     }
 
     // Helper method for lock mechanism / 添加锁机制的辅助方法
@@ -322,7 +330,21 @@ export class FITSDataManager {
         };
     }
 
-    // Create temporary file / 创建临时文件
+    // Add method to cleanup all temporary files
+    private async cleanupAllTempFiles(): Promise<void> {
+        for (const tempFile of this.tempFiles) {
+            try {
+                if (fs.existsSync(tempFile)) {
+                    await fs.promises.unlink(tempFile);
+                }
+            } catch (error) {
+                console.error(`Failed to delete temporary file: ${tempFile}`, error);
+            }
+        }
+        this.tempFiles.clear();
+    }
+
+    // Modify createTempFile to track files
     public async createTempFile(fileUri: vscode.Uri, data: Buffer, prefix: string = 'fits-data'): Promise<string> {
         const uriString = fileUri.toString();
 
@@ -330,17 +352,34 @@ export class FITSDataManager {
             const cacheItem = this.fitsCache.get(uriString);
             if (!cacheItem) throw new Error('No cache found for file');
 
+            // Delete previous temp file if it exists for the same prefix
+            const previousTempFiles = Array.from(cacheItem.tempFiles)
+                .filter(file => path.basename(file).startsWith(prefix));
+            
+            for (const prevFile of previousTempFiles) {
+                try {
+                    if (fs.existsSync(prevFile)) {
+                        await fs.promises.unlink(prevFile);
+                        cacheItem.tempFiles.delete(prevFile);
+                        this.tempFiles.delete(prevFile);
+                    }
+                } catch (error) {
+                    console.error(`Failed to delete previous temp file: ${prevFile}`, error);
+                }
+            }
+
             const tempFileName = `${prefix}-${crypto.randomBytes(8).toString('hex')}.bin`;
             const tempFilePath = path.join(this.tempDir, tempFileName);
             
             await fs.promises.writeFile(tempFilePath, data);
             cacheItem.tempFiles.add(tempFilePath);
+            this.tempFiles.add(tempFilePath);
             
             return tempFilePath;
         });
     }
 
-    // Clear file cache / 清理文件缓存
+    // Modify clearCache to properly cleanup temp files
     public async clearCache(fileUri: vscode.Uri): Promise<void> {
         const uriString = fileUri.toString();
 
@@ -348,11 +387,12 @@ export class FITSDataManager {
             const cacheItem = this.fitsCache.get(uriString);
             
             if (cacheItem) {
-                // Clean up temporary files / 清理临时文件
+                // Clean up temporary files
                 const deletionPromises = Array.from(cacheItem.tempFiles).map(async tempFile => {
                     try {
                         if (fs.existsSync(tempFile)) {
                             await fs.promises.unlink(tempFile);
+                            this.tempFiles.delete(tempFile);
                         }
                     } catch (error) {
                         console.error(`Failed to clean up temporary file: ${tempFile}`, error);
@@ -360,9 +400,10 @@ export class FITSDataManager {
                 });
 
                 await Promise.all(deletionPromises);
+                cacheItem.tempFiles.clear();
             }
 
-            // Delete cache item / 删除缓存项
+            // Delete cache item
             this.fitsCache.delete(uriString);
         });
     }

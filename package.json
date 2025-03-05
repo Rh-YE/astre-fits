@@ -1,21 +1,30 @@
 {
   "name": "astre-fits",
-  "displayName": "Astre Fits",
+  "displayName": "astre.fits",
   "description": "FITS文件查看器扩展",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/astre-fits.git"
+    "url": "https://github.com/rh/astre-fits.git"
   },
   "engines": {
-    "vscode": "^1.97.0"
+    "vscode": "^1.74.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Visualization"
   ],
   "activationEvents": [
-    "onCustomEditor:astre-fits.fitsViewer"
+    "onCustomEditor:astre-fits.fitsViewer",
+    "onStartupFinished"
   ],
+  "extensionKind": ["workspace", "ui"],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    },
+    "virtualWorkspaces": true
+  },
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
