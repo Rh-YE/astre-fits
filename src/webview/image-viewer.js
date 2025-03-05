@@ -628,10 +628,7 @@ class ImageViewer {
         // Render the image | 渲染图像
         this.renderWithTransform();
         
-        // Send ready message | 发送就绪消息
-        vscode.postMessage({
-            command: 'viewerReady'
-        });
+
     }
     
     // Load image data from binary file | 从二进制文件加载图像数据

@@ -369,6 +369,32 @@
                     const message = event.data;
                     
                     switch (message.command) {
+                        case 'getTransformType':
+                            // Get active transform type | 获取当前激活的变换类型
+                            const transformButtons = document.querySelectorAll('.scale-button[data-group="transform"]');
+                            let activeTransform = 'linear';
+                            transformButtons.forEach(button => {
+                                if (button.classList.contains('active')) {
+                                    activeTransform = button.getAttribute('data-scale') || 'linear';
+                                }
+                            });
+                            vscode.postMessage({
+                                command: 'transformTypeResponse',
+                                transformType: activeTransform
+                            });
+                            break;
+
+                        case 'getScaleValues':
+                            // Get current bias and contrast values | 获取当前偏差和对比度值
+                            const biasValue = parseFloat(document.getElementById('bias-value')?.textContent || '0.5');
+                            const contrastValue = parseFloat(document.getElementById('contrast-value')?.textContent || '1.0');
+                            vscode.postMessage({
+                                command: 'scaleValuesResponse',
+                                biasValue,
+                                contrastValue
+                            });
+                            break;
+
                         case 'setFileName':
                             document.getElementById('file-value').textContent = message.fileName;
                             break;

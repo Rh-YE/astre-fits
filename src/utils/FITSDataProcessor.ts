@@ -11,15 +11,240 @@ export class FITSDataProcessor {
     private static logger = Logger.getInstance();
 
     /**
+     * Calculate zscale values for image data
+     * 计算图像数据的zscale值
+     * @param image Image data array / 图像数据数组
+     * @param contrast Contrast value (default: 0.25) / 对比度值（默认：0.25）
+     * @param numSamples Number of samples (default: 600) / 采样数（默认：600）
+     * @param numPerLine Number of samples per line (default: 120) / 每行采样数（默认：120）
+     * @returns [z1, z2] Lower and upper limits / 下限和上限
+     */
+    private static calculateZScale(
+        image: Float32Array,
+        width: number,
+        height: number,
+        contrast: number = 0.25,
+        numSamples: number = 600,
+        numPerLine: number = 120
+    ): [number, number] {
+        const ZSMAX_REJECT = 0.5;  // Maximum rejection fraction / 最大剔除比例
+        const ZSMIN_NPIXELS = 5;   // Minimum number of pixels / 最小像素数
+        const ZSMAX_ITERATIONS = 5; // Maximum number of iterations / 最大迭代次数
+
+        // Sampling / 采样
+        const strideY = Math.max(2, Math.floor(height / numPerLine));
+        const strideX = Math.max(2, Math.floor(width / numPerLine));
+        
+        // Create samples array / 创建采样数组
+        let samples: number[] = [];
+        for (let y = 0; y < height; y += strideY) {
+            for (let x = 0; x < width; x += strideX) {
+                const value = image[y * width + x];
+                if (isFinite(value)) {
+                    samples.push(value);
+                }
+            }
+        }
+
+        // Random sampling if too many samples / 如果采样太多则随机采样
+        if (samples.length > numSamples) {
+            const tempSamples: number[] = [];
+            for (let i = 0; i < numSamples; i++) {
+                const idx = Math.floor(Math.random() * samples.length);
+                tempSamples.push(samples[idx]);
+            }
+            samples = tempSamples;
+        }
+
+        if (samples.length === 0) {
+            return [0, 1];
+        }
+
+        // Sort samples / 排序采样
+        samples.sort((a, b) => a - b);
+        const npix = samples.length;
+        const centerPixel = Math.max(1, Math.floor((npix + 1) / 2));
+        
+        // Calculate median / 计算中值
+        const median = (npix % 2 === 1 || centerPixel >= npix) ? 
+            samples[centerPixel - 1] : 
+            (samples[centerPixel - 1] + samples[centerPixel]) / 2.0;
+
+        // Fit line / 拟合直线
+        const minPixels = Math.max(ZSMIN_NPIXELS, Math.floor(npix * ZSMAX_REJECT));
+        const xscale = npix - 1;
+        let ngoodpix = npix;
+        let slope = 0;
+        let intercept = median;
+
+        // Iterative fitting / 迭代拟合
+        for (let niter = 0; niter < ZSMAX_ITERATIONS; niter++) {
+            if (ngoodpix < minPixels) {
+                return [samples[0], samples[samples.length - 1]];
+            }
+
+            // Least squares fit / 最小二乘拟合
+            let sumx = 0, sumy = 0, sumxy = 0, sumxx = 0;
+            for (let i = 0; i < ngoodpix; i++) {
+                const x = i / xscale;
+                const y = samples[i];
+                sumx += x;
+                sumy += y;
+                sumxy += x * y;
+                sumxx += x * x;
+            }
+
+            const denominator = ngoodpix * sumxx - sumx * sumx;
+            if (denominator !== 0) {
+                slope = (ngoodpix * sumxy - sumx * sumy) / denominator;
+                intercept = (sumy * sumxx - sumx * sumxy) / denominator;
+            }
+
+            // Calculate residuals and sigma / 计算残差和标准差
+            let sumResiduals = 0;
+            for (let i = 0; i < ngoodpix; i++) {
+                const x = i / xscale;
+                const fitted = x * slope + intercept;
+                const residual = samples[i] - fitted;
+                sumResiduals += residual * residual;
+            }
+            const sigma = Math.sqrt(sumResiduals / ngoodpix);
+
+            // Reject outliers / 剔除偏离点
+            const newSamples: number[] = [];
+            for (let i = 0; i < ngoodpix; i++) {
+                const x = i / xscale;
+                const fitted = x * slope + intercept;
+                const residual = Math.abs(samples[i] - fitted);
+                if (residual < sigma * 2.5) {
+                    newSamples.push(samples[i]);
+                }
+            }
+
+            if (newSamples.length === ngoodpix) {
+                break;
+            }
+            
+            samples = newSamples;
+            ngoodpix = samples.length;
+        }
+
+        // Calculate display range / 计算显示范围
+        if (contrast > 0) {
+            slope = slope / contrast;
+        }
+
+        const z1 = Math.max(samples[0], median - (centerPixel - 1) * slope);
+        const z2 = Math.min(samples[samples.length - 1], median + (npix - centerPixel) * slope);
+
+        return [z1, z2];
+    }
+
+    /**
+     * Apply bias and contrast adjustment
+     * 应用偏差和对比度调整
+     */
+    private static applyBiasContrast(
+        min: number,
+        max: number,
+        contrast: number,
+        bias: number
+    ): [number, number] {
+        const center = (min + max) / 2;
+        let width = max - min;
+        width *= contrast;
+        const newCenter = center + bias * width;
+        return [
+            newCenter - width / 2,
+            newCenter + width / 2
+        ];
+    }
+
+    /**
+     * Normalize image data
+     * 归一化图像数据
+     */
+    private static normalizeImage(
+        data: Float32Array,
+        min: number,
+        max: number
+    ): void {
+        const range = max - min;
+        if (range === 0) {
+            data.fill(0.5);
+            return;
+        }
+        
+        for (let i = 0; i < data.length; i++) {
+            data[i] = (data[i] - min) / range;
+        }
+    }
+
+    /**
+     * Apply non-linear transform
+     * 应用非线性变换
+     */
+    private static applyTransform(
+        data: Float32Array,
+        transformType: string
+    ): void {
+        const a = 1000; // 变换参数
+
+        switch (transformType) {
+            case 'log':
+                for (let i = 0; i < data.length; i++) {
+                    data[i] = Math.log10(a * data[i] + 1) / Math.log10(a);
+                }
+                break;
+            case 'power':
+                for (let i = 0; i < data.length; i++) {
+                    data[i] = (Math.pow(a, data[i]) - 1) / a;
+                }
+                break;
+            case 'sqrt':
+                for (let i = 0; i < data.length; i++) {
+                    data[i] = Math.sqrt(data[i]);
+                }
+                break;
+            case 'squared':
+                for (let i = 0; i < data.length; i++) {
+                    data[i] = data[i] * data[i];
+                }
+                break;
+            case 'asinh':
+                for (let i = 0; i < data.length; i++) {
+                    data[i] = Math.asinh(10 * data[i]) / 3;
+                }
+                break;
+            case 'sinh':
+                for (let i = 0; i < data.length; i++) {
+                    data[i] = Math.sinh(10 * data[i]) / 3;
+                }
+                break;
+            // linear transform is default, no operation needed
+        }
+    }
+
+    /**
+     * Clip image data to range [0, 1]
+     * 将图像数据裁剪到[0, 1]范围
+     */
+    private static clipImage(data: Float32Array): void {
+        for (let i = 0; i < data.length; i++) {
+            data[i] = Math.max(0, Math.min(1, data[i]));
+        }
+    }
+
+    /**
      * Apply scale transform to image data
      * 应用缩放变换到图像数据
-     * @param hduData HDU data / HDU数据
-     * @param scaleType Scale type / 缩放类型
-     * @returns Transformed data and statistics / 变换后的数据和统计信息
      */
     public static async applyScaleTransform(
         hduData: HDUData,
-        scaleType: string
+        scaleType: string,
+        transformType: string = 'linear',
+        biasValue: number = 0.5,
+        contrastValue: number = 1.0
     ): Promise<{
         data: Float32Array,
         min: number,
@@ -30,333 +255,40 @@ export class FITSDataProcessor {
         }
 
         // Create transformed data array / 创建变换后的数据数组
-        const transformedData = new Float32Array(hduData.data.length);
-        const min = hduData.stats.min;
-        const max = hduData.stats.max;
-        
-        // Check image size, use chunked processing if exceeds threshold
-        // 检查图像大小，如果超过阈值，则使用分块处理
-        const isLargeImage = hduData.data.length > 4000000; // Threshold of about 4 million pixels / 约4百万像素的阈值
-        this.logger.debug(`Image size: ${hduData.data.length} pixels, using ${isLargeImage ? 'chunked' : 'standard'} processing / 图像大小: ${hduData.data.length} 像素, 使用${isLargeImage ? '分块' : '标准'}处理`);
+        const transformedData = new Float32Array(hduData.data);
+        const width = hduData.width || Math.sqrt(hduData.data.length);
+        const height = hduData.height || Math.sqrt(hduData.data.length);
 
-        // First normalize data to 0-1 range / 首先进行归一化处理，将所有数据映射到0-1范围
-        await this.applyNormalization(hduData.data, transformedData, min, max, isLargeImage);
-        
-        // For linear transform, return normalized data directly
-        // 如果是线性变换，直接返回归一化后的数据
-        if (scaleType === 'linear') {
-            return {
-                data: transformedData,
-                min: 0,
-                max: 1
-            };
-        }
-
-        // Create temporary array for normalized data / 创建临时数组存储归一化后的数据
-        const tempData = new Float32Array(transformedData);
-
-        // Special handling for transforms requiring global data
-        // 特殊处理需要全局数据的变换
-        if (scaleType === 'histogram') {
-            await this.applyHistogramEqualization(
-                tempData, transformedData, 0, 1, isLargeImage
-            );
-        } else if (scaleType === 'zscale') {
-            await this.applyZScale(
-                tempData, transformedData, isLargeImage
-            );
+        // Calculate min/max or zscale / 计算最小最大值或zscale
+        let low: number, high: number;
+        if (scaleType === 'zscale') {
+            [low, high] = this.calculateZScale(transformedData, width, height);
         } else {
-            // For other transforms, use chunked processing
-            // 对于其他变换，使用分块处理
-            await this.applyStandardTransform(
-                tempData, transformedData, scaleType, 0, 1, isLargeImage
-            );
+            low = hduData.stats.min;
+            high = hduData.stats.max;
         }
 
-        // Calculate transformed data range / 计算变换后的数据范围
-        const { newMin, newMax } = await this.calculateDataRange(transformedData);
+        // Apply bias and contrast / 应用偏差和对比度
+        [low, high] = this.applyBiasContrast(low, high, contrastValue, biasValue);
+
+        // Normalize image / 归一化图像
+        this.normalizeImage(transformedData, low, high);
+
+        // Apply offset and scaling / 应用偏移和缩放
+        for (let i = 0; i < transformedData.length; i++) {
+            transformedData[i] = transformedData[i] * 1 + 0.5;
+        }
+
+        // Apply non-linear transform / 应用非线性变换
+        this.applyTransform(transformedData, transformType);
+
+        // Clip values / 裁剪值
+        this.clipImage(transformedData);
 
         return {
             data: transformedData,
-            min: newMin,
-            max: newMax
+            min: 0,
+            max: 1
         };
-    }
-
-    /**
-     * Apply normalization to map data to 0-1 range
-     * 应用归一化处理，将数据映射到0-1范围
-     */
-    private static async applyNormalization(
-        sourceData: Float32Array,
-        targetData: Float32Array,
-        min: number,
-        max: number,
-        isLargeImage: boolean
-    ): Promise<void> {
-        const range = max - min;
-        
-        // Avoid division by zero / 避免除以零
-        if (range === 0) {
-            // If range is 0, set all values to 0.5 / 如果范围为0，所有值设为0.5
-            targetData.fill(0.5);
-            return;
-        }
-        
-        const chunkSize = isLargeImage ? 1000000 : sourceData.length;
-        
-        for (let start = 0; start < sourceData.length; start += chunkSize) {
-            const end = Math.min(start + chunkSize, sourceData.length);
-            
-            for (let i = start; i < end; i++) {
-                targetData[i] = (sourceData[i] - min) / range;
-            }
-            
-            // Give UI thread time to update / 给UI线程一些时间更新
-            if (isLargeImage) {
-                await new Promise(resolve => setTimeout(resolve, 0));
-            }
-        }
-    }
-
-    /**
-     * Apply histogram equalization
-     * 应用直方图均衡化
-     */
-    private static async applyHistogramEqualization(
-        sourceData: Float32Array,
-        targetData: Float32Array,
-        min: number,
-        max: number,
-        isLargeImage: boolean
-    ): Promise<void> {
-        // Histogram equalization / 直方图均衡化
-        const histSize = 256;
-        const hist = new Uint32Array(histSize);
-        const cdf = new Uint32Array(histSize);
-        
-        // Calculate histogram using entire dataset
-        // 计算直方图 - 使用整个数据集
-        // Note: Data is already normalized to 0-1 range
-        // 注意：数据已经归一化到0-1范围
-        for (let i = 0; i < sourceData.length; i++) {
-            const bin = Math.floor(sourceData[i] * (histSize - 1));
-            if (bin >= 0 && bin < histSize) {
-                hist[bin]++;
-            }
-        }
-        
-        // Calculate cumulative distribution function
-        // 计算累积分布函数
-        cdf[0] = hist[0];
-        for (let i = 1; i < histSize; i++) {
-            cdf[i] = cdf[i-1] + hist[i];
-        }
-        
-        // Normalize CDF / 归一化CDF
-        const cdfMin = cdf[0];
-        const cdfMax = cdf[histSize-1];
-        const cdfScale = 1.0 / (cdfMax - cdfMin || 1); // Avoid division by zero / 避免除以零
-        
-        // Apply histogram equalization - can be processed in chunks
-        // 应用直方图均衡化 - 可以分块处理
-        const chunkSize = isLargeImage ? 1000000 : sourceData.length;
-        for (let start = 0; start < sourceData.length; start += chunkSize) {
-            const end = Math.min(start + chunkSize, sourceData.length);
-            
-            for (let i = start; i < end; i++) {
-                const bin = Math.floor(sourceData[i] * (histSize - 1));
-                if (bin >= 0 && bin < histSize) {
-                    targetData[i] = (cdf[bin] - cdfMin) * cdfScale;
-                }
-            }
-            
-            // Give UI thread time to update / 给UI线程一些时间更新
-            if (isLargeImage) {
-                await new Promise(resolve => setTimeout(resolve, 0));
-            }
-        }
-    }
-
-    /**
-     * Apply Z-Scale transform
-     * 应用Z-Scale变换
-     */
-    private static async applyZScale(
-        sourceData: Float32Array,
-        targetData: Float32Array,
-        isLargeImage: boolean
-    ): Promise<void> {
-        // z-scale algorithm (simplified version) / z-scale 算法 (简化版本)
-        const sampleSize = Math.min(10000, sourceData.length);
-        const sample = new Float32Array(sampleSize);
-        const step = Math.max(1, Math.floor(sourceData.length / sampleSize));
-        
-        // Sample data / 采样数据
-        for (let i = 0, j = 0; i < sourceData.length && j < sampleSize; i += step, j++) {
-            sample[j] = sourceData[i];
-        }
-        
-        // Calculate median and standard deviation / 计算中位数和标准差
-        const sortedSample = sample.slice(0, sampleSize).sort((a, b) => a - b);
-        const median = sortedSample[Math.floor(sampleSize / 2)];
-        
-        // Calculate standard deviation using more efficient method
-        // 计算标准差 - 使用更高效的方法
-        let sumDiff = 0;
-        for (let i = 0; i < sampleSize; i++) {
-            const diff = sample[i] - median;
-            sumDiff += diff * diff;
-        }
-        const stdDev = Math.sqrt(sumDiff / sampleSize);
-        
-        // Apply z-scale transform - note data is already normalized to 0-1 range
-        // 应用 z-scale 变换 - 注意数据已经归一化到0-1范围
-        // Use scaling factor relative to normalized range
-        // 使用相对于归一化范围的缩放因子
-        const zLow = Math.max(0, median - 2.5 * stdDev);
-        const zHigh = Math.min(1, median + 2.5 * stdDev);
-        const zScale = 1.0 / (zHigh - zLow || 0.01); // Avoid division by zero or very small values / 避免除以零或极小值
-        
-        // Chunked processing / 分块处理
-        const chunkSize = isLargeImage ? 1000000 : sourceData.length;
-        for (let start = 0; start < sourceData.length; start += chunkSize) {
-            const end = Math.min(start + chunkSize, sourceData.length);
-            
-            for (let i = start; i < end; i++) {
-                targetData[i] = Math.max(0, Math.min(1, (sourceData[i] - zLow) * zScale));
-            }
-            
-            // Give UI thread time to update / 给UI线程一些时间更新
-            if (isLargeImage) {
-                await new Promise(resolve => setTimeout(resolve, 0));
-            }
-        }
-    }
-
-    /**
-     * Apply standard transform
-     * 应用标准变换
-     */
-    private static async applyStandardTransform(
-        sourceData: Float32Array,
-        targetData: Float32Array,
-        scaleType: string,
-        min: number,
-        max: number,
-        isLargeImage: boolean
-    ): Promise<void> {
-        const chunkSize = isLargeImage ? 1000000 : sourceData.length;
-        
-        for (let start = 0; start < sourceData.length; start += chunkSize) {
-            const end = Math.min(start + chunkSize, sourceData.length);
-            
-            this.processDataChunk(sourceData, targetData, start, end, scaleType, min, max);
-            
-            // Give UI thread time to update / 给UI线程一些时间更新
-            if (isLargeImage) {
-                await new Promise(resolve => setTimeout(resolve, 0));
-            }
-        }
-    }
-
-    /**
-     * Process data chunk
-     * 处理数据块
-     */
-    private static processDataChunk(
-        sourceData: Float32Array,
-        targetData: Float32Array,
-        start: number,
-        end: number,
-        scaleType: string,
-        min: number,
-        max: number
-    ): void {
-        const chunkSize = end - start;
-        const chunk = sourceData.subarray(start, end);
-        const resultChunk = targetData.subarray(start, end);
-        
-        switch (scaleType) {
-            case 'linear':
-                // Linear transform - direct copy / 线性变换 - 直接复制
-                resultChunk.set(chunk);
-                break;
-                
-            case 'log':
-                // Logarithmic transform - use batch operation
-                // 对数变换 - 使用批量操作
-                // Note: Data is normalized to 0-1 range, so avoid log(0)
-                // 注意：数据已经归一化到0-1范围，所以需要避免log(0)
-                for (let i = 0; i < chunkSize; i++) {
-                    // Add small offset to avoid log(0) / 添加一个小的偏移量避免log(0)
-                    resultChunk[i] = Math.log(Math.max(chunk[i], 1e-10) + 1) / Math.log(2);
-                }
-                break;
-                
-            case 'sqrt':
-                // Square root transform / 平方根变换
-                for (let i = 0; i < chunkSize; i++) {
-                    resultChunk[i] = Math.sqrt(chunk[i]);
-                }
-                break;
-                
-            case 'squared':
-                // Square transform - can use batch multiplication
-                // 平方变换 - 可以使用批量乘法
-                for (let i = 0; i < chunkSize; i++) {
-                    resultChunk[i] = chunk[i] * chunk[i];
-                }
-                break;
-                
-            case 'asinh':
-                // Inverse hyperbolic sine transform / 反双曲正弦变换
-                for (let i = 0; i < chunkSize; i++) {
-                    resultChunk[i] = Math.asinh(chunk[i] * 10) / 3; // Scale to enhance effect / 缩放以增强效果
-                }
-                break;
-                
-            case 'sinh':
-                // Hyperbolic sine transform / 双曲正弦变换
-                for (let i = 0; i < chunkSize; i++) {
-                    resultChunk[i] = Math.sinh(chunk[i] * 3) / 10; // Scale to enhance effect / 缩放以增强效果
-                }
-                break;
-                
-            case 'power':
-                // Power law transform (gamma = 2.0) / 幂律变换 (gamma = 2.0)
-                for (let i = 0; i < chunkSize; i++) {
-                    resultChunk[i] = Math.pow(chunk[i], 2.0);
-                }
-                break;
-                
-            default:
-                resultChunk.set(chunk);
-                break;
-        }
-    }
-
-    /**
-     * Calculate data range
-     * 计算数据范围
-     */
-    private static async calculateDataRange(data: Float32Array): Promise<{ newMin: number, newMax: number }> {
-        let newMin = Number.POSITIVE_INFINITY;
-        let newMax = Number.NEGATIVE_INFINITY;
-        
-        // Calculate min and max in chunks / 分块计算最小值和最大值
-        const statsChunkSize = 1000000; // Process 1 million elements at a time / 每次处理100万个元素
-        for (let start = 0; start < data.length; start += statsChunkSize) {
-            const end = Math.min(start + statsChunkSize, data.length);
-            
-            for (let i = start; i < end; i++) {
-                if (isFinite(data[i])) {
-                    newMin = Math.min(newMin, data[i]);
-                    newMax = Math.max(newMax, data[i]);
-                }
-            }
-        }
-        
-        return { newMin, newMax };
     }
 } 
