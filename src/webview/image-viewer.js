@@ -39,6 +39,17 @@ class ImageViewer {
         this.biasValueDisplay = document.getElementById('bias-value');
         this.contrastValueDisplay = document.getElementById('contrast-value');
         
+        // Scale type related variables | 缩放类型相关变量
+        this.useZScale = false;           // Whether to use zscale | 是否使用zscale
+        this.currentScaleType = 'linear'; // Current scale type | 当前缩放类型
+        
+        // Get scale type elements | 获取缩放类型元素
+        this.minmaxButton = document.getElementById('minmax-button');
+        this.zscaleButton = document.getElementById('zscale-button');
+        this.scaleTypeButtons = document.querySelectorAll('.scale-type-button');
+        
+        this.isMultiDimensional = false;  // 添加多维数据标记
+        
         // Initialize event listeners | 初始化事件监听
         this.initEventListeners();
     }
@@ -90,6 +101,35 @@ class ImageViewer {
         
         // Start observing container size changes | 开始观察容器大小变化
         this.resizeObserver.observe(this.imageContainer);
+        
+        // Scale type button events | 缩放类型按钮事件
+        if (this.minmaxButton) {
+            this.minmaxButton.addEventListener('click', () => {
+                this.useZScale = false;
+                this.minmaxButton.classList.add('active');
+                this.zscaleButton.classList.remove('active');
+                this.updateDisplay();
+            });
+        }
+        
+        if (this.zscaleButton) {
+            this.zscaleButton.addEventListener('click', () => {
+                this.useZScale = true;
+                this.zscaleButton.classList.add('active');
+                this.minmaxButton.classList.remove('active');
+                this.updateDisplay();
+            });
+        }
+        
+        // Scale type buttons events | 缩放类型按钮事件
+        this.scaleTypeButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                this.scaleTypeButtons.forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
+                this.currentScaleType = button.dataset.scaleType;
+                this.updateDisplay();
+            });
+        });
     }
     
     // Handle container size changes | 处理容器大小变化
@@ -539,11 +579,38 @@ class ImageViewer {
             return;
         }
         
+        // Initialize scale type | 初始化缩放类型
+        this.useZScale = false;
+        this.currentScaleType = 'linear';
+        this.biasValue = 0.5;
+        this.contrastValue = 1.0;
+        
+        // Update UI buttons | 更新UI按钮
+        if (this.minmaxButton) {
+            this.minmaxButton.classList.add('active');
+            this.zscaleButton.classList.remove('active');
+        }
+        
+        this.scaleTypeButtons.forEach(button => {
+            if (button.dataset.scaleType === 'linear') {
+                button.classList.add('active');
+            } else {
+                button.classList.remove('active');
+            }
+        });
+        
         // Check if multi-dimensional data | 检查是否是多维数据
         const isMultiDimensional = rawData.depth && rawData.depth > 1;
         
         // If multi-dimensional data, save original data and show channel selector | 如果是多维数据，保存原始数据并显示通道选择器
         if (isMultiDimensional) {
+            this.isMultiDimensional = true;
+            document.getElementById('channel-selector-container').style.display = 'block';
+            // 更新通道相关UI
+            this.maxChannel = Math.max(0, rawData.depth - 1);
+            this.channelSlider.max = this.maxChannel;
+            this.channelValue.textContent = `${this.currentChannel}/${this.maxChannel}`;
+            
             // Save original multi-dimensional data | 保存原始多维数据
             this.originalImageData = {
                 data3D: rawData.data,
@@ -627,8 +694,6 @@ class ImageViewer {
         
         // Render the image | 渲染图像
         this.renderWithTransform();
-        
-
     }
     
     // Load image data from binary file | 从二进制文件加载图像数据
@@ -687,14 +752,14 @@ class ImageViewer {
     handleBiasSliderInput() {
         this.biasValue = parseFloat(this.biasSlider.value);
         this.biasValueDisplay.textContent = this.biasValue.toFixed(2);
-        this.renderWithTransform();
+        this.updateDisplay();
     }
     
     // Handle contrast slider input | 处理对比度滑块输入
     handleContrastSliderInput() {
         this.contrastValue = parseFloat(this.contrastSlider.value);
         this.contrastValueDisplay.textContent = this.contrastValue.toFixed(1);
-        this.renderWithTransform();
+        this.updateDisplay();
     }
     
     // Apply bias and contrast to pixel value | 对像素值应用偏差和对比度
@@ -712,6 +777,50 @@ class ImageViewer {
         
         // Clamp value to 0-1 range | 将值限制在0-1范围内
         return Math.max(0, Math.min(1, adjustedValue));
+    }
+    
+    // Update display | 更新显示
+    async updateDisplay() {
+        if (!this.currentImageData) return;
+
+        try {
+            // Get current transform type and range type | 获取当前变换类型和范围类型
+            const transformButton = document.querySelector('.transform-group .scale-button.active');
+            const rangeButton = document.querySelector('.range-group .scale-button.active');
+            
+            // Get transform type and use zscale flag | 获取变换类型和zscale标志
+            const scaleType = transformButton ? transformButton.getAttribute('data-scale') : 'linear';
+            const useZScale = rangeButton ? rangeButton.getAttribute('data-scale') === 'zscale' : false;
+
+            // Send message to extension to apply scale transform | 发送消息到扩展应用缩放变换
+            vscode.postMessage({
+                command: 'applyScaleTransform',
+                scaleType: scaleType,
+                useZScale: useZScale,
+                biasValue: this.biasValue,
+                contrastValue: this.contrastValue
+            });
+        } catch (error) {
+            log(`Error updating display: ${error.message} | 更新显示时出错: ${error.message}`);
+        }
+    }
+
+    // Update image data | 更新图像数据
+    updateImageData(data, min, max) {
+        if (!data) return;
+
+        // Update current image data | 更新当前图像数据
+        this.currentImageData = {
+            data: data,
+            width: this.currentImageData.width,
+            height: this.currentImageData.height,
+            depth: this.currentImageData.depth,
+            min: min,
+            max: max
+        };
+
+        // Re-render image | 重新渲染图像
+        this.renderWithTransform();
     }
 }
 

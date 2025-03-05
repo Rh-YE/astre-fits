@@ -272,7 +272,6 @@
                 document.querySelectorAll('.scale-button').forEach(button => {
                     button.addEventListener('click', () => {
                         const group = button.getAttribute('data-group');
-                        const scaleType = button.getAttribute('data-scale');
                         
                         // Deactivate all buttons in the same group | 取消激活同组中的所有按钮
                         document.querySelectorAll(`.scale-button[data-group="${group}"]`).forEach(b => {
@@ -282,10 +281,18 @@
                         // Activate current button | 激活当前按钮
                         button.classList.add('active');
                         
-                        // Send scale type to extension | 发送缩放类型到扩展
+                        // Get current transform type and range type | 获取当前变换类型和范围类型
+                        const transformButton = document.querySelector('.transform-group .scale-button.active');
+                        const rangeButton = document.querySelector('.range-group .scale-button.active');
+                        
+                        const scaleType = transformButton ? transformButton.getAttribute('data-scale') : 'linear';
+                        const useZScale = rangeButton ? rangeButton.getAttribute('data-scale') === 'zscale' : false;
+                        
+                        // Send scale transform message to extension | 发送缩放变换消息到扩展
                         vscode.postMessage({
-                            command: 'setScaleType',
-                            scaleType: scaleType
+                            command: 'applyScaleTransform',
+                            scaleType: scaleType,
+                            useZScale: useZScale
                         });
                     });
                 });
@@ -369,32 +376,6 @@
                     const message = event.data;
                     
                     switch (message.command) {
-                        case 'getTransformType':
-                            // Get active transform type | 获取当前激活的变换类型
-                            const transformButtons = document.querySelectorAll('.scale-button[data-group="transform"]');
-                            let activeTransform = 'linear';
-                            transformButtons.forEach(button => {
-                                if (button.classList.contains('active')) {
-                                    activeTransform = button.getAttribute('data-scale') || 'linear';
-                                }
-                            });
-                            vscode.postMessage({
-                                command: 'transformTypeResponse',
-                                transformType: activeTransform
-                            });
-                            break;
-
-                        case 'getScaleValues':
-                            // Get current bias and contrast values | 获取当前偏差和对比度值
-                            const biasValue = parseFloat(document.getElementById('bias-value')?.textContent || '0.5');
-                            const contrastValue = parseFloat(document.getElementById('contrast-value')?.textContent || '1.0');
-                            vscode.postMessage({
-                                command: 'scaleValuesResponse',
-                                biasValue,
-                                contrastValue
-                            });
-                            break;
-
                         case 'setFileName':
                             document.getElementById('file-value').textContent = message.fileName;
                             break;
@@ -459,6 +440,17 @@
                             
                         case 'setSelectedHDU':
                             document.getElementById('hdu-selector').value = message.hduIndex;
+                            break;
+                            
+                        case 'scaleTransformResult':
+                            if (message.data) {
+                                imageViewer.updateImageData(message.data, message.min, message.max);
+                            } else {
+                                document.getElementById('fits-canvas').style.display = 'none';
+                                const imagePlaceholder = document.getElementById('image-placeholder');
+                                imagePlaceholder.style.display = 'block';
+                                imagePlaceholder.textContent = '无法应用缩放变换';
+                            }
                             break;
                             
                         case 'showSpectrum':

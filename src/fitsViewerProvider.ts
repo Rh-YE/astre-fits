@@ -289,7 +289,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
      */
     async handleSetScaleType(uri: vscode.Uri, scaleType: string, webviewPanel: vscode.WebviewPanel): Promise<void> {
         try {
-            // Get current HDU data | 获取当前HDU索引
+            // Get current HDU index | 获取当前HDU索引
             const uriString = uri.toString();
             const currentHduIndex = this.currentHDUIndex.get(uriString) || 0;
             
@@ -297,50 +297,19 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             if (!hduData || hduData.type !== HDUType.IMAGE) {
                 throw new Error('Cannot get image data');
             }
-
-            // Get transform type from active button | 获取变换类型
-            const transformType = await new Promise<string>((resolve) => {
-                const messageHandler = (message: any) => {
-                    if (message.command === 'transformTypeResponse') {
-                        webviewPanel.webview.onDidReceiveMessage(messageHandler);
-                        resolve(message.transformType || 'linear');
-                    }
-                };
-                webviewPanel.webview.onDidReceiveMessage(messageHandler);
-                webviewPanel.webview.postMessage({ command: 'getTransformType' });
-            });
-
-            // Get bias and contrast values | 获取偏差和对比度值
-            const { biasValue, contrastValue } = await new Promise<{biasValue: number, contrastValue: number}>((resolve) => {
-                const messageHandler = (message: any) => {
-                    if (message.command === 'scaleValuesResponse') {
-                        webviewPanel.webview.onDidReceiveMessage(messageHandler);
-                        resolve({
-                            biasValue: message.biasValue || 0.5,
-                            contrastValue: message.contrastValue || 1.0
-                        });
-                    }
-                };
-                webviewPanel.webview.onDidReceiveMessage(messageHandler);
-                webviewPanel.webview.postMessage({ command: 'getScaleValues' });
-            });
-
+            
             // Apply scale transform | 应用缩放变换
             const transformResult = await FITSDataProcessor.applyScaleTransform(
                 hduData,
-                scaleType,
-                transformType,
-                biasValue,
-                contrastValue
+                scaleType
             );
             
             // Create temporary file | 创建临时文件
             const metadataBuffer = Buffer.from(JSON.stringify({
-                width: transformResult.width,
-                height: transformResult.height,
-                depth: transformResult.depth,
-                min: transformResult.min,
-                max: transformResult.max,
+                width: hduData.width,
+                height: hduData.height,
+                min: transformResult.stats.min,
+                max: transformResult.stats.max,
                 scaleType: scaleType
             }));
             const headerLengthBuffer = Buffer.alloc(4);
@@ -1049,6 +1018,54 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             this.logger.error('Error returning to spectrum:', error);
             this.webviewService.sendLoadingMessage(webviewPanel.webview, 
                 `Cannot return to spectrum: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    /**
+     * Handle apply scale transform message | 处理应用缩放变换消息
+     */
+    async handleApplyScaleTransform(
+        uri: vscode.Uri,
+        scaleType: string,
+        useZScale: boolean,
+        biasValue: number,
+        contrastValue: number,
+        webviewPanel: vscode.WebviewPanel
+    ): Promise<void> {
+        try {
+            const currentHduIndex = this.currentHDUIndex.get(uri.toString()) || 0;
+            const hduData = await this.dataManager.getHDUData(uri, currentHduIndex);
+            
+            if (!hduData || hduData.type !== HDUType.IMAGE) {
+                throw new Error('Invalid HDU data or not an image HDU');
+            }
+
+            // 应用缩放变换
+            const transformedData = await FITSDataProcessor.applyScaleTransform(
+                hduData,
+                scaleType,
+                useZScale,
+                biasValue,
+                contrastValue
+            );
+
+            // 发送变换后的数据到webview
+            webviewPanel.webview.postMessage({
+                command: 'scaleTransformResult',
+                data: transformedData.data,
+                min: transformedData.stats.min,
+                max: transformedData.stats.max,
+                width: transformedData.width,
+                height: transformedData.height,
+                depth: transformedData.depth
+            });
+
+        } catch (error) {
+            this.logger.error('Error applying scale transform:', error);
+            webviewPanel.webview.postMessage({
+                command: 'error',
+                message: 'Failed to apply scale transform'
+            });
         }
     }
 } 

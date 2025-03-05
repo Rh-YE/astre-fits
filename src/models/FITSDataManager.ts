@@ -44,8 +44,9 @@ export interface HDUData {
     type: HDUType;
     width?: number;
     height?: number;
+    depth?: number;  // 添加depth属性用于多维数据
     data: Float32Array;
-    columns?: Map<string, ColumnData>;  // Added: Multi-column support / 新增：多列数据支持
+    columns?: Map<string, ColumnData>;  // 多列数据支持
     tableData?: TableData;
     stats: {
         min: number;
