@@ -268,17 +268,21 @@
                 // Start observing container size changes | 开始监听容器大小变化
                 resizeObserver.observe(container);
                 
-                // Initialize zoom buttons | 初始化缩放按钮
+                // Initialize scale buttons | 初始化缩放按钮
                 document.querySelectorAll('.scale-button').forEach(button => {
                     button.addEventListener('click', () => {
-                        // Remove all active buttons | 移除所有活动按钮
-                        document.querySelectorAll('.scale-button').forEach(b => b.classList.remove('active'));
+                        const group = button.getAttribute('data-group');
+                        const scaleType = button.getAttribute('data-scale');
+                        
+                        // Deactivate all buttons in the same group | 取消激活同组中的所有按钮
+                        document.querySelectorAll(`.scale-button[data-group="${group}"]`).forEach(b => {
+                            b.classList.remove('active');
+                        });
                         
                         // Activate current button | 激活当前按钮
                         button.classList.add('active');
                         
                         // Send scale type to extension | 发送缩放类型到扩展
-                        const scaleType = button.getAttribute('data-scale');
                         vscode.postMessage({
                             command: 'setScaleType',
                             scaleType: scaleType
@@ -578,16 +582,24 @@
 
                 <!-- Image scale buttons group | 图像缩放按钮组 -->
                 <div id="image-scale-buttons" class="scale-buttons-group">
-                    <div class="scale-button active" data-scale="linear">linear</div>
-                    <div class="scale-button" data-scale="log">log</div>
-                    <div class="scale-button" data-scale="power">power</div>
-                    <div class="scale-button" data-scale="sqrt">sqrt</div>
-                    <div class="scale-button" data-scale="squared">squared</div>
-                    <div class="scale-button" data-scale="asinh">asinh</div>
-                    <div class="scale-button" data-scale="sinh">sinh</div>
-                    <div class="scale-button" data-scale="histogram">histogram</div>
-                    <div class="scale-button" data-scale="minmax">min max</div>
-                    <div class="scale-button" data-scale="zscale">zscale</div>
+                    <!-- Transform group | 变换组 -->
+                    <div class="button-group transform-group">
+                        <div class="scale-button active" data-scale="linear" data-group="transform">linear</div>
+                        <div class="scale-button" data-scale="log" data-group="transform">log</div>
+                        <div class="scale-button" data-scale="power" data-group="transform">power</div>
+                        <div class="scale-button" data-scale="sqrt" data-group="transform">sqrt</div>
+                        <div class="scale-button" data-scale="squared" data-group="transform">squared</div>
+                        <div class="scale-button" data-scale="asinh" data-group="transform">asinh</div>
+                        <div class="scale-button" data-scale="sinh" data-group="transform">sinh</div>
+                        <div class="scale-button" data-scale="histogram" data-group="transform">histogram</div>
+                    </div>
+                    
+                    <!-- Range group | 范围组 -->
+                    <div class="button-group range-group">
+                        <div class="scale-button active" data-scale="minmax" data-group="range">min max</div>
+                        <div class="scale-button" data-scale="zscale" data-group="range">zscale</div>
+                    </div>
+
                     <!-- Bias and contrast controls | 偏差和对比度控制 -->
                     <div class="scale-controls-sliders">
                         <div class="slider-container">

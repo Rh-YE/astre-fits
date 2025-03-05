@@ -549,4 +549,19 @@ h3 {
 
 .table-pagination span {
     color: var(--vscode-foreground);
+}
+
+/* Button group styles | 按钮组样式 */
+.button-group {
+    display: flex;
+    margin-right: 10px;
+    padding-right: 10px;
+}
+
+.transform-group {
+    border-right: 1px solid var(--vscode-border);
+}
+
+.range-group {
+    margin-left: 5px;
 } 
