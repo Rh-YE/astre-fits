@@ -302,11 +302,42 @@ class ImageViewer {
         document.getElementById('pixel-info').style.display = 'none';
     }
     
+    // Update slice and fit to container | 更新切片并适应容器
+    updateSliceAndFit() {
+        if (!this.originalImageData) return;
+        
+        // Extract new slice with updated dimensions | 提取新的切片并更新尺寸
+        const slice2D = this.extract2DSlice(this.originalImageData, this.currentChannel, this.currentAxesOrder);
+        
+        // Update current image data | 更新当前图像数据
+        this.currentImageData = slice2D;
+
+        // Get container dimensions | 获取容器尺寸
+        const container = this.imageContainer;
+        const containerWidth = container.clientWidth;
+        const containerHeight = container.clientHeight;
+
+        // Calculate new zoom level to fit container | 计算新的缩放级别以适应容器
+        const scaleX = containerWidth / slice2D.width;
+        const scaleY = containerHeight / slice2D.height;
+        this.zoomLevel = Math.min(scaleX, scaleY) * 0.95;
+        
+        // Center the image | 居中图像
+        this.panOffsetX = (containerWidth - slice2D.width * this.zoomLevel) / 2;
+        this.panOffsetY = (containerHeight - slice2D.height * this.zoomLevel) / 2;
+
+        // Update zoom indicator | 更新缩放指示器
+        showZoomIndicator(this.zoomIndicator, this.zoomLevel);
+        
+        // Re-render image | 重新渲染图像
+        this.renderWithTransform();
+    }
+
     // Handle channel slider input | 处理通道滑块输入
     handleChannelSliderInput() {
         this.currentChannel = parseInt(this.channelSlider.value);
         this.channelValue.textContent = `${this.currentChannel}/${this.maxChannel}`;
-        this.updateChannelDisplay();
+        this.updateSliceAndFit();
     }
     
     // Handle axes order change | 处理轴顺序变更
@@ -317,8 +348,7 @@ class ImageViewer {
         // Reset channel slider | 重置通道滑块
         this.resetChannelSlider();
         
-        // Update display | 更新显示
-        this.updateChannelDisplay();
+        this.updateSliceAndFit();
     }
     
     // Reset channel slider | 重置通道滑块

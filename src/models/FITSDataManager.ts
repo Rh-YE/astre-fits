@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
 import { LoadingManager } from './LoadingManager';
+import { Logger } from './Logger';
 
 // HDU Type Enumeration / HDU类型枚举
 export enum HDUType {
@@ -71,6 +72,7 @@ export class FITSDataManager {
     private cacheLock: Map<string, Promise<void>> = new Map();
     private tempDir: string;
     private tempFiles: Set<string> = new Set(); // Track all temporary files
+    private logger: Logger;
 
     private constructor(context: vscode.ExtensionContext) {
         this.tempDir = path.join(context.globalStorageUri.fsPath, 'fits-temp');
@@ -78,6 +80,7 @@ export class FITSDataManager {
             fs.mkdirSync(this.tempDir, { recursive: true });
         }
         this.loadingManager = LoadingManager.getInstance();
+        this.logger = Logger.getInstance();
 
         // Add cleanup on extension deactivation
         context.subscriptions.push({
@@ -119,9 +122,11 @@ export class FITSDataManager {
     // Load FITS file / 加载FITS文件
     public async loadFITS(fileUri: vscode.Uri, fits: FITS): Promise<void> {
         const uriString = fileUri.toString();
+        this.logger.debug(`[FITSDataManager] Starting to load FITS file: ${uriString}`);
         
         return this.loadingManager.startLoading(uriString, this.withLock(uriString, async () => {
             try {
+                this.logger.debug(`[FITSDataManager] Creating cache item for ${fits.hdus.length} HDUs`);
                 const cacheItem: CacheItem = {
                     fits: fits,
                     processedData: new Map(),
@@ -132,10 +137,12 @@ export class FITSDataManager {
                 
                 // Pre-process all HDU data / 预处理所有HDU数据
                 for (let i = 0; i < fits.hdus.length; i++) {
+                    this.logger.debug(`[FITSDataManager] Pre-processing HDU ${i}`);
                     await this.processHDU(fileUri, i);
                 }
+                this.logger.debug(`[FITSDataManager] FITS file loaded successfully`);
             } catch (error) {
-                console.error(`Failed to load FITS file: ${uriString}`, error);
+                this.logger.error(`[FITSDataManager] Failed to load FITS file: ${error instanceof Error ? error.message : String(error)}`);
                 await this.clearCache(fileUri);
                 throw error;
             }
@@ -157,53 +164,87 @@ export class FITSDataManager {
     // Get HDU data / 获取HDU数据
     public async getHDUData(fileUri: vscode.Uri, hduIndex: number): Promise<HDUData | null> {
         const uriString = fileUri.toString();
+        this.logger.debug(`[FITSDataManager] Getting HDU data for index ${hduIndex} from ${uriString}`);
 
         return this.withLock(uriString, async () => {
             const cacheItem = this.fitsCache.get(uriString);
-            if (!cacheItem) return null;
+            if (!cacheItem) {
+                this.logger.error(`[FITSDataManager] No cache found for file: ${uriString}`);
+                return null;
+            }
 
             // Check if already processed / 检查是否已处理
             if (cacheItem.processedData.has(hduIndex)) {
+                this.logger.debug(`[FITSDataManager] Found cached HDU data for index ${hduIndex}`);
                 return cacheItem.processedData.get(hduIndex)!;
             }
 
             // Process HDU data / 处理HDU数据
+            this.logger.debug(`[FITSDataManager] Processing HDU data for index ${hduIndex}`);
             return this.processHDU(fileUri, hduIndex);
         });
     }
 
     // Process HDU data / 处理HDU数据
     private async processHDU(fileUri: vscode.Uri, hduIndex: number): Promise<HDUData | null> {
-        const cacheItem = this.fitsCache.get(fileUri.toString());
-        if (!cacheItem) return null;
+        const uriString = fileUri.toString();
+        this.logger.debug(`[FITSDataManager] Processing HDU ${hduIndex} for ${uriString}`);
+        
+        const cacheItem = this.fitsCache.get(uriString);
+        if (!cacheItem) {
+            this.logger.error(`[FITSDataManager] No cache found for file when processing HDU`);
+            return null;
+        }
 
         const hdu = cacheItem.fits.hdus[hduIndex];
-        if (!hdu || !hdu.data) return null;
+        if (!hdu) {
+            this.logger.error(`[FITSDataManager] HDU ${hduIndex} not found in FITS file`);
+            return null;
+        }
+        if (!hdu.data) {
+            this.logger.error(`[FITSDataManager] No data found in HDU ${hduIndex}`);
+            return null;
+        }
 
         // Determine HDU type / 确定HDU类型
         const type = this.determineHDUType(hdu);
+        this.logger.debug(`[FITSDataManager] Determined HDU type: ${type}`);
         
         // Process data based on type / 根据类型处理数据
         let processedData: HDUData;
         
         const hduWithData = { ...hdu, data: hdu.data } as FITSHDU & { data: Float32Array };
         
-        if (type === HDUType.IMAGE) {
-            processedData = await this.processImageData(hduWithData);
-        } else if (type === HDUType.BINTABLE || type === HDUType.TABLE) {
-            processedData = await this.processTableData(hduWithData);
-        } else {
-            processedData = await this.processDefaultData(hduWithData);
-        }
+        try {
+            if (type === HDUType.IMAGE) {
+                this.logger.debug(`[FITSDataManager] Processing as image data`);
+                processedData = await this.processImageData(hduWithData);
+            } else if (type === HDUType.BINTABLE || type === HDUType.TABLE) {
+                this.logger.debug(`[FITSDataManager] Processing as table data`);
+                processedData = await this.processTableData(hduWithData);
+            } else {
+                this.logger.debug(`[FITSDataManager] Processing as default data`);
+                processedData = await this.processDefaultData(hduWithData);
+            }
 
-        // Cache processed data / 缓存处理后的数据
-        cacheItem.processedData.set(hduIndex, processedData);
-        return processedData;
+            // Cache processed data / 缓存处理后的数据
+            cacheItem.processedData.set(hduIndex, processedData);
+            this.logger.debug(`[FITSDataManager] Successfully processed and cached HDU ${hduIndex} data`);
+            return processedData;
+        } catch (error) {
+            this.logger.error(`[FITSDataManager] Error processing HDU ${hduIndex}: ${error instanceof Error ? error.message : String(error)}`);
+            if (error instanceof Error && error.stack) {
+                this.logger.debug(`[FITSDataManager] Error stack trace: ${error.stack}`);
+            }
+            return null;
+        }
     }
 
     // Determine HDU type / 确定HDU类型
     private determineHDUType(hdu: FITSHDU): HDUType {
         const xtension = hdu.header.getItem('XTENSION')?.value?.trim().toUpperCase();
+        this.logger.debug(`[FITSDataManager] XTENSION value: ${xtension}`);
+        
         if (xtension) {
             if (xtension === 'IMAGE') return HDUType.IMAGE;
             if (xtension === 'BINTABLE') return HDUType.BINTABLE;
@@ -215,6 +256,8 @@ export class FITSDataManager {
         const naxis = hdu.header.getItem('NAXIS')?.value || 0;
         const naxis1 = hdu.header.getItem('NAXIS1')?.value || 0;
         const naxis2 = hdu.header.getItem('NAXIS2')?.value || 0;
+        
+        this.logger.debug(`[FITSDataManager] NAXIS=${naxis}, NAXIS1=${naxis1}, NAXIS2=${naxis2}`);
 
         if (naxis >= 2 && naxis1 > 1 && naxis2 > 1) {
             return HDUType.IMAGE;

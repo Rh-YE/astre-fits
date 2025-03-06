@@ -424,27 +424,30 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
      * Load FITS file | 加载FITS文件
      */
     private async loadFITS(fileUri: vscode.Uri): Promise<FITS> {
-        // this.logger.info('Starting to load FITS file...');
+        this.logger.debug(`Starting to load FITS file: ${fileUri.fsPath}`);
         try {
             // Read FITS file | 读取FITS文件
-            this.logger.debug(`Trying to read file: ${fileUri.fsPath}`);
+            this.logger.debug(`Reading file contents...`);
             const fitsData = await fs.promises.readFile(fileUri.fsPath);
-            this.logger.debug(`FITS file read, size: ${fitsData.length} bytes`);
+            this.logger.debug(`FITS file read successfully, size: ${fitsData.length} bytes`);
             
-            this.logger.debug('Starting to parse FITS data...');
+            this.logger.debug('Starting FITS data parsing...');
             const parser = new FITSParser();
             const fits = parser.parseFITS(new Uint8Array(fitsData));
-            this.logger.debug('FITS data parsing complete');
+            this.logger.debug(`FITS parsing complete, found ${fits.hdus.length} HDUs`);
             
             // Load to data manager | 加载到数据管理器
-            this.logger.debug('Loading to data manager...');
+            this.logger.debug('Loading data to data manager...');
             await this.dataManager.loadFITS(fileUri, fits);
             this.currentFileUri = fileUri;
-            // this.logger.info('FITS file loading complete');
+            this.logger.debug('FITS file loading complete');
             
             return fits;
         } catch (error) {
-            this.logger.error(`Failed to load FITS file: ${error}`);
+            this.logger.error(`Failed to load FITS file: ${error instanceof Error ? error.message : String(error)}`);
+            if (error instanceof Error && error.stack) {
+                this.logger.debug(`Error stack trace: ${error.stack}`);
+            }
             throw error;
         }
     }
@@ -454,6 +457,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
      */
     private async updateWebview(fileUri: vscode.Uri, webviewPanel: vscode.WebviewPanel): Promise<void> {
         const uriString = fileUri.toString();
+        this.logger.debug(`Starting updateWebview for file: ${uriString}`);
 
         if (this.loadingManager.isLoading(uriString)) {
             this.webviewService.sendLoadingMessage(webviewPanel.webview, 'File is loading, please wait...');
@@ -463,20 +467,22 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
         try {
             this.webviewService.sendLoadingMessage(webviewPanel.webview, 'Parsing FITS file, please wait...');
             
+            this.logger.debug('Loading FITS file...');
             const fits = await this.loadFITS(fileUri);
+            this.logger.debug(`FITS file loaded, HDU count: ${fits.hdus.length}`);
             
             this.webviewService.sendHDUCount(webviewPanel.webview, this.dataManager.getHDUCount(fileUri));
             
-            // Determine HDU index to display | 确定要显示的HDU索引
-            // If there are extension HDUs (total > 1), show first extension HDU (index 1) | 如果有扩展HDU（总数>1），则显示第一个扩展HDU（索引为1）
+            // Determine HDU index to display
             const hduCount = this.dataManager.getHDUCount(fileUri);
+            this.logger.debug(`Total HDU count: ${hduCount}`);
             const defaultHduIndex = hduCount > 1 ? 1 : 0;
             
-            // Set current HDU index | 设置当前HDU索引
+            // Set current HDU index
             this.currentHDUIndex.set(uriString, defaultHduIndex);
-            this.logger.debug(`Default showing HDU ${defaultHduIndex}`);
+            this.logger.debug(`Set default HDU index to: ${defaultHduIndex}`);
             
-            // Send message to update HDU selector state | 发送消息更新HDU选择器的选中状态
+            // Send message to update HDU selector state
             this.webviewService.postMessage(webviewPanel.webview, {
                 command: 'setSelectedHDU',
                 hduIndex: defaultHduIndex
@@ -484,10 +490,13 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             
             await this.sendHeaderInfo(fileUri, webviewPanel, defaultHduIndex);
             
+            this.logger.debug(`Attempting to get HDU data for index: ${defaultHduIndex}`);
             const hduData = await this.dataManager.getHDUData(fileUri, defaultHduIndex);
             if (!hduData) {
+                this.logger.error(`HDU data is null for index ${defaultHduIndex}`);
                 throw new Error('Cannot get HDU data');
             }
+            this.logger.debug(`Successfully retrieved HDU data, type: ${hduData.type}`);
             
             // Send filename | 发送文件名
             const fileName = path.basename(fileUri.fsPath);
@@ -539,9 +548,12 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
      */
     private async processImageHDU(fileUri: vscode.Uri, hduData: any, webviewPanel: vscode.WebviewPanel): Promise<void> {
         try {
+            this.logger.debug('Starting to process image HDU...');
             // Check if multi-dimensional data | 检查是否是多维数据
-            const header = this.dataManager.getHDUHeader(fileUri, 0);
+            const currentHduIndex = this.currentHDUIndex.get(fileUri.toString()) || 0;
+            const header = this.dataManager.getHDUHeader(fileUri, currentHduIndex);
             const naxis = header?.getItem('NAXIS')?.value || 0;
+            this.logger.debug(`Image dimensions (NAXIS): ${naxis}`);
             
             // Create metadata object | 创建元数据对象
             const metadata: any = {
@@ -551,6 +563,8 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                 max: hduData.stats.max
             };
             
+            this.logger.debug(`Image metadata: width=${metadata.width}, height=${metadata.height}, min=${metadata.min}, max=${metadata.max}`);
+            
             // Add depth info for 3D or higher dimensional data | 如果是3D或更高维度的数据，添加深度信息
             if (naxis > 2) {
                 const naxis3 = header?.getItem('NAXIS3')?.value || 1;
@@ -559,6 +573,7 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             }
             
             // Create temporary file | 创建临时文件
+            this.logger.debug('Creating metadata buffer...');
             const metadataBuffer = Buffer.from(JSON.stringify(metadata));
             
             // Create header length indicator | 创建头部长度指示器
@@ -566,7 +581,9 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             headerLengthBuffer.writeUInt32LE(metadataBuffer.length, 0);
             
             // Create data buffer | 创建数据缓冲区
+            this.logger.debug('Creating data buffer...');
             const dataBuffer = Buffer.from(hduData.data.buffer);
+            this.logger.debug(`Data buffer size: ${dataBuffer.length} bytes`);
             
             // Merge all data | 合并所有数据
             const combinedBuffer = Buffer.concat([
@@ -575,20 +592,29 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                 dataBuffer
             ]);
             
+            this.logger.debug(`Combined buffer size: ${combinedBuffer.length} bytes`);
+            
             // Create temporary file | 创建临时文件
+            this.logger.debug('Creating temporary file...');
             const tempFilePath = await this.dataManager.createTempFile(fileUri, combinedBuffer);
+            this.logger.debug(`Temporary file created: ${tempFilePath}`);
             
             // Send file URI to webview | 发送文件URI到webview
             this.webviewService.sendImageDataFileUri(webviewPanel.webview, vscode.Uri.file(tempFilePath));
+            this.logger.debug('Image data sent to webview');
             
         } catch (error) {
             this.logger.error('Error creating temporary file:', error);
+            if (error instanceof Error && error.stack) {
+                this.logger.debug(`Error stack trace: ${error.stack}`);
+            }
             
             // Fallback to JSON if binary transfer fails | 如果二进制传输失败，回退到JSON方式
             this.logger.debug('Falling back to JSON transfer method');
             
             // Check if multi-dimensional data | 检查是否是多维数据
-            const header = this.dataManager.getHDUHeader(fileUri, 0);
+            const currentHduIndex = this.currentHDUIndex.get(fileUri.toString()) || 0;
+            const header = this.dataManager.getHDUHeader(fileUri, currentHduIndex);
             const naxis = header?.getItem('NAXIS')?.value || 0;
             const rawData: any = {
                 data: Array.from(hduData.data),
