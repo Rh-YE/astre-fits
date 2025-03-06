@@ -1,5 +1,10 @@
 # Change Log
 
+## [0.0.8]: March 6, 2025
+
+- Fix: channel index change will refresh image now 
+<!-- - Fix bugs: Change Axes from [1,2,3] to [1,3,2] -->
+
 ## [0.0.7]: March 6, 2025
 
 - Add contact in README
