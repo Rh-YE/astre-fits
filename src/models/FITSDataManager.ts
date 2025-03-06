@@ -268,8 +268,25 @@ export class FITSDataManager {
 
     // Process image data / 处理图像数据
     private async processImageData(hdu: FITSHDU & { data: Float32Array }): Promise<HDUData> {
+        // Get dimensions from header
+        const naxis = hdu.header.getItem('NAXIS')?.value || 0;
         const width = hdu.header.getItem('NAXIS1')?.value || 0;
         const height = hdu.header.getItem('NAXIS2')?.value || 0;
+        const depth = naxis > 2 ? (hdu.header.getItem('NAXIS3')?.value || 1) : 1;
+
+        this.logger.debug(`[FITSDataManager] Processing image data:
+            NAXIS: ${naxis}
+            Width (NAXIS1): ${width}
+            Height (NAXIS2): ${height}
+            Depth (NAXIS3): ${depth}
+            Data length: ${hdu.data.length}
+        `);
+
+        // Verify data dimensions
+        const expectedSize = width * height * depth;
+        if (hdu.data.length !== expectedSize) {
+            throw new Error(`Data size mismatch: expected ${expectedSize}, got ${hdu.data.length}`);
+        }
 
         // Calculate statistics / 计算统计信息
         let min = Number.MAX_VALUE;
@@ -279,20 +296,31 @@ export class FITSDataManager {
 
         for (let i = 0; i < hdu.data.length; i++) {
             const value = hdu.data[i];
-            min = Math.min(min, value);
-            max = Math.max(max, value);
-            sum += value;
-            sumSquares += value * value;
+            if (isFinite(value)) {
+                min = Math.min(min, value);
+                max = Math.max(max, value);
+                sum += value;
+                sumSquares += value * value;
+            }
         }
 
         const mean = sum / hdu.data.length;
         const variance = (sumSquares / hdu.data.length) - (mean * mean);
         const stdDev = Math.sqrt(variance);
 
+        this.logger.debug(`[FITSDataManager] Image statistics:
+            Min: ${min}
+            Max: ${max}
+            Mean: ${mean}
+            StdDev: ${stdDev}
+        `);
+
+        // 返回完整的HDU数据，包含所有维度信息
         return {
             type: HDUType.IMAGE,
             width,
             height,
+            depth,
             data: hdu.data,
             stats: { min, max, mean, stdDev }
         };

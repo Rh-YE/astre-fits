@@ -1091,39 +1091,98 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
         webviewPanel: vscode.WebviewPanel
     ): Promise<void> {
         try {
+            this.logger.debug(`[FitsViewerProvider] Starting scale transform:
+                URI: ${uri.toString()}
+                Scale Type: ${scaleType}
+                Use ZScale: ${useZScale}
+                Bias: ${biasValue}
+                Contrast: ${contrastValue}
+            `);
+
             const currentHduIndex = this.currentHDUIndex.get(uri.toString()) || 0;
             const hduData = await this.dataManager.getHDUData(uri, currentHduIndex);
             
-            if (!hduData || hduData.type !== HDUType.IMAGE) {
+            if (!hduData || hduData.type !== HDUType.IMAGE || !hduData.width || !hduData.height) {
                 throw new Error('Invalid HDU data or not an image HDU');
+            }
+
+            // 获取深度信息
+            const header = this.dataManager.getHDUHeader(uri, currentHduIndex);
+            const naxis = header?.getItem('NAXIS')?.value || 0;
+            const depth = naxis > 2 ? (header?.getItem('NAXIS3')?.value || 1) : 1;
+
+            // 验证数据维度和大小
+            const sliceSize = hduData.width * hduData.height;
+            const expectedDataLength = sliceSize * depth;
+            const actualDataLength = hduData.data.length;
+
+            this.logger.debug(`[FitsViewerProvider] Data dimension validation:
+                Expected total data length (width * height * depth): ${expectedDataLength}
+                Actual data length: ${actualDataLength}
+                Width: ${hduData.width}
+                Height: ${hduData.height}
+                Depth: ${depth}
+                Slice size: ${sliceSize}
+            `);
+
+            if (expectedDataLength !== actualDataLength) {
+                this.logger.warn(`[FitsViewerProvider] Data dimension mismatch:
+                    Expected: ${expectedDataLength}
+                    Actual: ${actualDataLength}
+                    This might indicate incorrect data reshaping or axis order issues.
+                `);
             }
 
             // 应用缩放变换
             const transformedData = await FITSDataProcessor.applyScaleTransform(
-                hduData,
+                {
+                    ...hduData,
+                    depth: depth
+                },
                 scaleType,
                 useZScale,
                 biasValue,
                 contrastValue
             );
 
-            // 发送变换后的数据到webview
-            webviewPanel.webview.postMessage({
-                command: 'scaleTransformResult',
-                data: transformedData.data,
-                min: transformedData.stats.min,
-                max: transformedData.stats.max,
+            if (!transformedData || !transformedData.width || !transformedData.height) {
+                throw new Error('Invalid transformed data');
+            }
+
+            // 验证变换后的数据维度
+            const transformedExpectedLength = transformedData.width * transformedData.height * depth;
+            const transformedActualLength = transformedData.data.length;
+
+            if (transformedExpectedLength !== transformedActualLength) {
+                this.logger.warn(`[FitsViewerProvider] Transformed data dimension mismatch:
+                    Expected: ${transformedExpectedLength}
+                    Actual: ${transformedActualLength}
+                    This might indicate data corruption during transform.
+                `);
+            }
+
+            // 创建包含深度信息的元数据
+            const metadata = {
                 width: transformedData.width,
                 height: transformedData.height,
-                depth: transformedData.depth
+                depth: depth,
+                min: transformedData.stats.min,
+                max: transformedData.stats.max
+            };
+
+            // 发送变换后的数据到WebView
+            this.webviewService.postMessage(webviewPanel.webview, {
+                command: 'setImageData',
+                rawData: {
+                    data: Array.from(transformedData.data),
+                    ...metadata
+                }
             });
 
         } catch (error) {
             this.logger.error('Error applying scale transform:', error);
-            webviewPanel.webview.postMessage({
-                command: 'error',
-                message: 'Failed to apply scale transform'
-            });
+            this.webviewService.sendLoadingMessage(webviewPanel.webview, 
+                `Failed to apply scale transform: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 } 

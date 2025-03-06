@@ -18,6 +18,7 @@ export class FITSDataProcessor {
      * @param useZScale Whether to use zscale / 是否使用zscale
      * @param biasValue Bias value / 偏差值
      * @param contrastValue Contrast value / 对比度值
+     * @param channel Current channel to process / 当前要处理的通道
      * @returns Transformed data and statistics / 变换后的数据和统计信息
      */
     public static async applyScaleTransform(
@@ -25,97 +26,76 @@ export class FITSDataProcessor {
         scaleType: string,
         useZScale: boolean = false,
         biasValue: number = 0.5,
-        contrastValue: number = 1.0
+        contrastValue: number = 1.0,
+        channel: number = 0
     ): Promise<HDUData> {
         if (hduData.type !== HDUType.IMAGE) {
-            throw new Error('Scale transform can only be applied to image type HDU / 只能对图像类型的HDU应用缩放变换');
+            throw new Error('Scale transform can only be applied to image type HDU');
         }
 
         if (!hduData.width || !hduData.height) {
-            throw new Error('Invalid image dimensions / 图像尺寸无效');
+            throw new Error('Invalid image dimensions');
         }
 
-        // Create transformed data array / 创建变换后的数据数组
-        const transformedData = new Float32Array(hduData.data.length);
-        
-        // Step 1: Calculate initial low/high values / 第一步：计算初始low/high值
-        let low: number, high: number;
-        
-        // 记录当前的处理参数
-        console.log(`[FITSDataProcessor] Scale Transform Parameters:
-            Scale Type: ${scaleType}
-            Use ZScale: ${useZScale}
-            Bias: ${biasValue}
-            Contrast: ${contrastValue}
-            Current Width: ${hduData.width}
-            Current Height: ${hduData.height}
-            Data Length: ${hduData.data.length}`);
+        // 计算切片大小
+        const sliceSize = hduData.width * hduData.height;
+        const depth = hduData.depth || 1;
 
+        // 验证通道索引
+        if (channel < 0 || channel >= depth) {
+            throw new Error(`Invalid channel index: ${channel}`);
+        }
+
+        // 提取当前通道的切片数据
+        const sliceOffset = channel * sliceSize;
+        const sliceData = hduData.data.subarray(sliceOffset, sliceOffset + sliceSize);
+
+        // 创建变换后的数据数组
+        const transformedSlice = new Float32Array(sliceSize);
+
+        // 使用zscale或数据统计计算范围
+        let low: number, high: number;
         if (useZScale) {
-            // 确保使用当前切片的正确维度进行ZScale计算
-            const zscaleResult = await this.calculateZScale(
-                hduData.data,
-                hduData.width,
-                hduData.height
-            );
+            const zscaleResult = await this.calculateZScale(sliceData, hduData.width, hduData.height);
             low = zscaleResult.z1;
             high = zscaleResult.z2;
-            console.log(`[FITSDataProcessor] ZScale Results:
-                Z1 (low): ${low}
-                Z2 (high): ${high}`);
         } else {
-            // 添加空值检查和实时计算逻辑，使用当前切片的数据
-            if (hduData.stats?.min === undefined || hduData.stats?.max === undefined) {
-                console.log('[FITSDataProcessor] Stats not found, calculating for current slice...');
-                const stats = await this.calculateDataStatistics(hduData.data);
-                low = stats.min;
-                high = stats.max;
-                console.log(`[FITSDataProcessor] Calculated Stats for current slice:
-                    Min: ${low}
-                    Max: ${high}`);
-            } else {
-                low = hduData.stats.min;
-                high = hduData.stats.max;
-                console.log(`[FITSDataProcessor] Using cached stats for current slice:
-                    Min: ${low}
-                    Max: ${high}`);
+            // 只计算当前切片的统计信息
+            let sliceMin = Infinity;
+            let sliceMax = -Infinity;
+            for (let i = 0; i < sliceData.length; i++) {
+                const value = sliceData[i];
+                if (isFinite(value)) {
+                    sliceMin = Math.min(sliceMin, value);
+                    sliceMax = Math.max(sliceMax, value);
+                }
             }
+            low = sliceMin;
+            high = sliceMax;
         }
 
-        // 记录归一化范围
-        console.log(`[FITSDataProcessor] Normalization range for current slice:
-            Low: ${low}
-            High: ${high}`);
-
-        // Step 2: Apply bias and contrast / 第二步：应用偏差和对比度
+        // 应用偏差和对比度
         const biasContrastResult = this.applyBiasContrast(low, high, contrastValue, biasValue);
         low = biasContrastResult.low;
         high = biasContrastResult.high;
 
-        // Step 3: Normalize image / 第三步：归一化图像
-        await this.normalizeImage(hduData.data, transformedData, low, high);
+        // 归一化切片
+        await this.normalizeImage(sliceData, transformedSlice, low, high);
 
-        // Step 4: Apply non-linear transform / 第四步：应用非线性变换
-        const tempData = new Float32Array(transformedData);
-        await this.applyNonLinearTransform(tempData, transformedData, scaleType);
+        // 应用非线性变换
+        const tempData = new Float32Array(transformedSlice);
+        await this.applyNonLinearTransform(tempData, transformedSlice, scaleType);
 
-        // Step 5: Clip values / 第五步：裁剪值
-        this.clipValues(transformedData);
+        // 裁剪值
+        this.clipValues(transformedSlice);
 
-        // 记录最终结果
-        console.log(`[FITSDataProcessor] Transform Results for current slice:
-            Output Min: 0
-            Output Max: 1
-            Transform Type: ${scaleType}
-            Dimensions: ${hduData.width}x${hduData.height}`);
-
-        // 返回完整的HDUData对象，保持原始的维度信息
+        // 返回只包含当前切片的HDUData对象
         return {
             type: hduData.type,
             width: hduData.width,
             height: hduData.height,
-            depth: hduData.depth,
-            data: transformedData,
+            depth: 1,  // 只返回单个切片
+            data: transformedSlice,
             columns: hduData.columns,
             stats: {
                 min: 0,
@@ -269,15 +249,41 @@ export class FITSDataProcessor {
         low: number,
         high: number
     ): Promise<void> {
+        console.log(`[FITSDataProcessor] Starting image normalization:
+            Source data length: ${sourceData.length}
+            Target data length: ${targetData.length}
+            Value range: [${low}, ${high}]
+            First 5 source values: ${sourceData.slice(0, 5).join(', ')}
+        `);
+
         const range = high - low;
         if (range === 0) {
+            console.log('[FITSDataProcessor] Zero range detected, filling with 0.5');
             targetData.fill(0.5);
             return;
         }
 
+        // Track data transformation for first few pixels
+        const transformationSamples = [];
+        
         for (let i = 0; i < sourceData.length; i++) {
             targetData[i] = ((sourceData[i] - low) / range) * 1 + 0.5;
+            
+            // Track first 5 transformations
+            if (i < 5) {
+                transformationSamples.push({
+                    index: i,
+                    sourceValue: sourceData[i],
+                    normalizedValue: targetData[i]
+                });
+            }
         }
+
+        console.log(`[FITSDataProcessor] Normalization samples:`, transformationSamples);
+        console.log(`[FITSDataProcessor] Normalization result:
+            First 5 normalized values: ${targetData.slice(0, 5).join(', ')}
+            Last 5 normalized values: ${targetData.slice(-5).join(', ')}
+        `);
     }
 
     /**
@@ -288,7 +294,15 @@ export class FITSDataProcessor {
         targetData: Float32Array,
         scaleType: string
     ): Promise<void> {
+        console.log(`[FITSDataProcessor] Starting non-linear transform:
+            Transform type: ${scaleType}
+            Source data length: ${sourceData.length}
+            Target data length: ${targetData.length}
+            First 5 source values: ${sourceData.slice(0, 5).join(', ')}
+        `);
+
         const a = 1000; // 常数参数
+        const transformationSamples = [];
 
         for (let i = 0; i < sourceData.length; i++) {
             const x = sourceData[i];
@@ -321,7 +335,23 @@ export class FITSDataProcessor {
             }
 
             targetData[i] = result;
+
+            // Track first 5 transformations
+            if (i < 5) {
+                transformationSamples.push({
+                    index: i,
+                    inputValue: x,
+                    outputValue: result,
+                    transformType: scaleType
+                });
+            }
         }
+
+        console.log(`[FITSDataProcessor] Transform samples:`, transformationSamples);
+        console.log(`[FITSDataProcessor] Transform result:
+            First 5 transformed values: ${targetData.slice(0, 5).join(', ')}
+            Last 5 transformed values: ${targetData.slice(-5).join(', ')}
+        `);
     }
 
     /**

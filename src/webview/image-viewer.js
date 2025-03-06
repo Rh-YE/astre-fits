@@ -396,10 +396,18 @@ class ImageViewer {
     // Extract 2D slice from 3D data | 从3D数据中提取2D切片
     extract2DSlice(data3D, channel, axesOrder) {
         if (!data3D || !data3D.data3D) return data3D;
+
+        console.log(`[ImageViewer] Starting 2D slice extraction:
+            Input dimensions: depth=${data3D.depth}, height=${data3D.height}, width=${data3D.width}
+            Channel: ${channel}
+            Axes Order: [${axesOrder.join(', ')}]
+            Original data length: ${data3D.data3D.length}
+            First 5 values of original data: ${data3D.data3D.slice(0, 5)}
+        `);
         
-        const channelDimIndex = axesOrder[0];
-        const rowDimIndex = axesOrder[1];
-        const colDimIndex = axesOrder[2];
+        const channelDimIndex = axesOrder[0];  // 通道维度索引
+        const rowDimIndex = axesOrder[1];      // 行维度索引
+        const colDimIndex = axesOrder[2];      // 列维度索引
         
         // Get dimensions sizes | 获取各维度大小
         const dims = [
@@ -407,10 +415,22 @@ class ImageViewer {
             data3D.height || 1,
             data3D.width || 1
         ];
+
+        console.log(`[ImageViewer] Dimension mapping:
+            Channel dimension (${channelDimIndex}): ${dims[channelDimIndex]}
+            Row dimension (${rowDimIndex}): ${dims[rowDimIndex]}
+            Column dimension (${colDimIndex}): ${dims[colDimIndex]}
+        `);
         
         // Calculate result 2D slice dimensions | 计算结果2D切片的尺寸
         const resultWidth = dims[colDimIndex];
         const resultHeight = dims[rowDimIndex];
+
+        console.log(`[ImageViewer] Output dimensions:
+            Result width: ${resultWidth}
+            Result height: ${resultHeight}
+            Expected output size: ${resultWidth * resultHeight}
+        `);
         
         // Create result data | 创建结果数据
         const result = {
@@ -420,27 +440,59 @@ class ImageViewer {
             min: Infinity,
             max: -Infinity
         };
-        
-        // Fill 2D slice data | 填充2D切片数据
-        for (let r = 0; r < resultHeight; r++) {
-            for (let c = 0; c < resultWidth; c++) {
-                // Calculate index in original 3D data | 计算原始3D数据中的索引
-                const indices = [0, 0, 0];
-                indices[channelDimIndex] = channel;
-                indices[rowDimIndex] = r;
-                indices[colDimIndex] = c;
+
+        // Calculate strides for each dimension | 计算每个维度的步长
+        const strides = [
+            dims[1] * dims[2],  // stride for depth
+            dims[2],            // stride for height
+            1                   // stride for width
+        ];
+
+        // Reorder strides based on axes order | 根据轴顺序重新排列步长
+        const orderedStrides = [
+            strides[channelDimIndex],
+            strides[rowDimIndex],
+            strides[colDimIndex]
+        ];
+
+        console.log(`[ImageViewer] Strides:
+            Original strides: [${strides.join(', ')}]
+            Ordered strides: [${orderedStrides.join(', ')}]
+            Channel stride: ${orderedStrides[0]}
+            Row stride: ${orderedStrides[1]}
+            Column stride: ${orderedStrides[2]}
+        `);
+
+        // Extract 2D slice | 提取2D切片
+        for (let y = 0; y < resultHeight; y++) {
+            for (let x = 0; x < resultWidth; x++) {
+                // Calculate source index | 计算源数据索引
+                const sourceIndex = 
+                    channel * orderedStrides[0] +
+                    y * orderedStrides[1] +
+                    x * orderedStrides[2];
+
+                // Calculate destination index | 计算目标数据索引
+                const destIndex = y * resultWidth + x;
+
+                // Copy data and update min/max | 复制数据并更新最小/最大值
+                const value = data3D.data3D[sourceIndex];
+                result.data[destIndex] = value;
                 
-                const srcIdx = indices[0] * dims[1] * dims[2] + indices[1] * dims[2] + indices[2];
-                const destIdx = r * resultWidth + c;
-                
-                // Copy data | 复制数据
-                result.data[destIdx] = data3D.data3D[srcIdx];
-                
-                // Update min/max values | 更新最小/最大值
-                result.min = Math.min(result.min, result.data[destIdx]);
-                result.max = Math.max(result.max, result.data[destIdx]);
+                if (isFinite(value)) {
+                    result.min = Math.min(result.min, value);
+                    result.max = Math.max(result.max, value);
+                }
             }
         }
+
+        console.log(`[ImageViewer] Slice extraction result:
+            Output dimensions: ${result.width}x${result.height}
+            Output data length: ${result.data.length}
+            First 5 values: ${result.data.slice(0, 5)}
+            Last 5 values: ${result.data.slice(-5)}
+            Value range: [${result.min}, ${result.max}]
+        `);
         
         return result;
     }
@@ -649,6 +701,7 @@ class ImageViewer {
         if (isMultiDimensional) {
             this.isMultiDimensional = true;
             document.getElementById('channel-selector-container').style.display = 'block';
+            
             // 更新通道相关UI
             this.maxChannel = Math.max(0, rawData.depth - 1);
             this.channelSlider.max = this.maxChannel;
@@ -656,7 +709,7 @@ class ImageViewer {
             
             // Save original multi-dimensional data | 保存原始多维数据
             this.originalImageData = {
-                data3D: rawData.data,
+                data3D: rawData.data instanceof Float32Array ? rawData.data : new Float32Array(rawData.data),
                 width: rawData.width,
                 height: rawData.height,
                 depth: rawData.depth,
@@ -688,7 +741,13 @@ class ImageViewer {
             this.originalImageData = null;
             
             // Save current image data | 保存当前图像数据
-            this.currentImageData = rawData;
+            this.currentImageData = {
+                data: rawData.data instanceof Float32Array ? rawData.data : new Float32Array(rawData.data),
+                width: rawData.width,
+                height: rawData.height,
+                min: rawData.min,
+                max: rawData.max
+            };
         }
         
         // Show Canvas, hide placeholder | 显示Canvas，隐藏占位符
@@ -849,16 +908,31 @@ class ImageViewer {
                 scaleType: scaleType,
                 useZScale: useZScale,
                 biasValue: this.biasValue,
-                contrastValue: this.contrastValue
+                contrastValue: this.contrastValue,
+                channel: this.currentChannel  // 添加当前通道信息
             });
         } catch (error) {
-            log(`Error updating display: ${error.message} | 更新显示时出错: ${error.message}`);
+            console.error(`[ImageViewer] Error in updateDisplay: ${error.message}`, error);
         }
     }
 
     // Update image data | 更新图像数据
     updateImageData(data, min, max) {
-        if (!data) return;
+        if (!data) {
+            console.error('[ImageViewer] Received null data in updateImageData');
+            return;
+        }
+
+        console.log(`[ImageViewer] Updating image data:
+            Data length: ${data.length}
+            Current image width: ${this.currentImageData.width}
+            Current image height: ${this.currentImageData.height}
+            Current image depth: ${this.currentImageData.depth || 'N/A'}
+            New min: ${min}
+            New max: ${max}
+            First 5 values: ${data.slice(0, 5)}
+            Last 5 values: ${data.slice(-5)}
+        `);
 
         // Update current image data | 更新当前图像数据
         this.currentImageData = {
