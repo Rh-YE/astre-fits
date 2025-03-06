@@ -430,7 +430,7 @@
                                 document.getElementById('fits-canvas').style.display = 'none';
                                 const imagePlaceholder = document.getElementById('image-placeholder');
                                 imagePlaceholder.style.display = 'block';
-                                imagePlaceholder.textContent = message.message || '无法显示图像数据';
+                                imagePlaceholder.textContent = message.message || 'Cannot display image data';
                             }
                             break;
                             
@@ -449,7 +449,7 @@
                                 document.getElementById('fits-canvas').style.display = 'none';
                                 const imagePlaceholder = document.getElementById('image-placeholder');
                                 imagePlaceholder.style.display = 'block';
-                                imagePlaceholder.textContent = '无法应用缩放变换';
+                                imagePlaceholder.textContent = 'Cannot apply scale transform';
                             }
                             break;
                             
@@ -564,10 +564,10 @@
                 <!-- Channel switch options | 通道切换选项 -->
                 <div class="info-value" id="channel-selector-container" style="display: none;">
                     <div style="display: flex; align-items: center; margin-top: 5px;">
-                        <span class="info-label">通道:</span>
+                        <span class="info-label">Axes:</span>
                         <input type="range" id="channel-slider" min="0" value="0" style="flex-grow: 1; margin: 0 10px;">
                         <span class="info-value" id="channel-value">0/0</span>
-                        <span class="info-label" style="margin-left: 15px;">轴顺序:</span>
+                        <span class="info-label" style="margin-left: 15px;">Axes Order:</span>
                         <select id="axes-order-selector" style="background-color: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); border: 1px solid var(--vscode-dropdown-border); padding: 3px; border-radius: 2px; margin-left: 5px; width: 80px;">
                             <option value="0,1,2">1 2 3</option>
                             <option value="0,2,1">1 3 2</option>
@@ -582,9 +582,9 @@
             
             
             <div class="header-info-container">
-                <h3>头文件信息</h3>
+                <h3>Fits Header</h3>
                 <div class="header-scroll">
-                    <pre id="header-info" style="white-space: pre-wrap; margin: 0;">无头文件信息</pre>
+                    <pre id="header-info" style="white-space: pre-wrap; margin: 0;">No header info</pre>
                 </div>
             </div>
         </div>
@@ -595,7 +595,7 @@
             <div class="scale-controls">
                 <!-- Table operation buttons | 表格操作按钮 -->
                 <div style="display: flex; align-items: center; margin-right: 15px;">
-                    <button id="return-spectrum-button" class="table-button" style="margin-left: 10px; display: none;">返回光谱</button>
+                    <button id="return-spectrum-button" class="table-button" style="margin-left: 10px; display: none;">Show Spectrum</button>
                 </div>
 
                 <!-- Image scale buttons group | 图像缩放按钮组 -->
@@ -621,12 +621,12 @@
                     <!-- Bias and contrast controls | 偏差和对比度控制 -->
                     <div class="scale-controls-sliders">
                         <div class="slider-container">
-                            <label for="bias-slider">偏差:</label>
+                            <label for="bias-slider">Bias:</label>
                             <input type="range" id="bias-slider" min="0" max="1" step="0.01" value="0.5">
                             <span id="bias-value">0.5</span>
                         </div>
                         <div class="slider-container">
-                            <label for="contrast-slider">对比度:</label>
+                            <label for="contrast-slider">Contrast:</label>
                             <input type="range" id="contrast-slider" min="0" max="10" step="0.1" value="1">
                             <span id="contrast-value">1.0</span>
                         </div>
@@ -636,20 +636,20 @@
                 <!-- Spectrum column selectors - hidden by default | 光谱列选择器 - 默认隐藏 -->
                 <div id="spectrum-column-selectors" class="spectrum-controls" style="display: none;">
                     <div style="display: flex; align-items: center; margin-right: 15px;">
-                        <span style="margin-right: 5px; color: var(--vscode-foreground);">波长: </span>
+                        <span style="margin-right: 5px; color: var(--vscode-foreground);">Wavelength: </span>
                         <select id="wavelength-column-selector" style="background-color: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); border: 1px solid var(--vscode-dropdown-border); padding: 3px; border-radius: 2px; min-width: 120px;">
-                            <option value="">未选择</option>
+                            <option value="">none</option>
                         </select>
                     </div>
                     <div style="display: flex; align-items: center;">
-                        <span style="margin-right: 5px; color: var(--vscode-foreground);">流量: </span>
+                        <span style="margin-right: 5px; color: var(--vscode-foreground);">Flux: </span>
                         <select id="flux-column-selector" style="background-color: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); border: 1px solid var(--vscode-dropdown-border); padding: 3px; border-radius: 2px; min-width: 120px;">
-                            <option value="">未选择</option>
+                            <option value="">none</option>
                         </select>
                     </div>
                     <div style="display: flex; align-items: center; margin-left: 15px;">
-                        <button id="zoom-box-button" style="background-color: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 3px 8px; border-radius: 2px; cursor: pointer;">放大</button>
-                        <button id="show-table-button" style="background-color: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 3px 8px; border-radius: 2px; cursor: pointer; margin-left: 8px;">显示表格</button>
+                        <button id="zoom-box-button" style="background-color: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 3px 8px; border-radius: 2px; cursor: pointer;">Zoom in</button>
+                        <button id="show-table-button" style="background-color: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 3px 8px; border-radius: 2px; cursor: pointer; margin-left: 8px;">Show Table</button>
                     </div>
                 </div>
                 
@@ -668,9 +668,9 @@
     <div class="image-container">
         <canvas id="fits-canvas" class="image-display"></canvas>
         <canvas id="spectrum-canvas" class="spectrum-display" style="display: none;"></canvas>
-        <div id="image-placeholder" class="image-placeholder">加载中...</div>
+        <div id="image-placeholder" class="image-placeholder">Loading...</div>
         <div id="pixel-info" class="pixel-info"></div>
-        <div id="zoom-indicator" class="zoom-indicator" style="display: none;">缩放: 100%</div>
+        <div id="zoom-indicator" class="zoom-indicator" style="display: none;">Zoom: 100%</div>
     </div>
     
     <!-- Add status bar | 添加状态栏 -->
@@ -689,12 +689,12 @@
         </div>
         <!-- Add pagination controls | 添加分页控件 -->
         <div id="pagination-container" style="display: none; justify-content: center; align-items: center; padding: 10px; gap: 10px;">
-            <button id="prev-page" class="pagination-button">&lt; 上一页</button>
+            <button id="prev-page" class="pagination-button">&lt; Previous</button>
             <div style="display: flex; align-items: center; gap: 5px;">
                 <input type="number" id="page-number" style="width: 60px; text-align: center;" min="1">
                 <span>/ <span id="total-pages">1</span></span>
             </div>
-            <button id="next-page" class="pagination-button">下一页 &gt;</button>
+            <button id="next-page" class="pagination-button">Next &gt;</button>
             <span id="page-info" style="margin-left: 10px;"></span>
         </div>
     </div>

@@ -172,7 +172,7 @@ class ImageViewer {
         }
         
         // Update zoom indicator text | 更新缩放指示器文本
-        this.zoomIndicator.textContent = `缩放: ${Math.round(this.zoomLevel * 100)}%`;
+        this.zoomIndicator.textContent = `Zoom: ${Math.round(this.zoomLevel * 100)}%`;
         
         // Re-render image | 重新渲染图像
         this.renderWithTransform();
