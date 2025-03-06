@@ -338,17 +338,18 @@ class ImageViewer {
         this.currentChannel = parseInt(this.channelSlider.value);
         this.channelValue.textContent = `${this.currentChannel}/${this.maxChannel}`;
         this.updateSliceAndFit();
+        // 添加这行来触发缩放变换的重新应用
+        this.updateDisplay();
     }
     
-    // Handle axes order change | 处理轴顺序变更
     handleAxesOrderChange() {
         this.currentAxesOrder = this.axesOrderSelector.value.split(',').map(Number);
         log(`轴顺序已更改为: ${this.currentAxesOrder}`);
         
-        // Reset channel slider | 重置通道滑块
         this.resetChannelSlider();
-        
         this.updateSliceAndFit();
+        // 添加这行来触发缩放变换的重新应用
+        this.updateDisplay();
     }
     
     // Reset channel slider | 重置通道滑块

@@ -1,5 +1,11 @@
 # Change Log
 
+## [0.0.7]: March 6, 2025
+
+- Add contact in README
+- Fix bugs: Can correctly show Datacube and single band image
+- Can apply Scale function after changing channel
+- unfixed bugs: correct data handling for non-linear transforms after axes order change
 
 ## [0.0.6]: March 6, 2025
 

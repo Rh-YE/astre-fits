@@ -2,7 +2,7 @@
   "name": "astre-fits",
   "displayName": "astre.fits",
   "description": "A Simple FITS File Viewer VSCode Extension",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "publisher": "RenhaoYe",
   "repository": {
     "type": "git",

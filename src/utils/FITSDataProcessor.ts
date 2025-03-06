@@ -46,36 +46,44 @@ export class FITSDataProcessor {
             Scale Type: ${scaleType}
             Use ZScale: ${useZScale}
             Bias: ${biasValue}
-            Contrast: ${contrastValue}`);
+            Contrast: ${contrastValue}
+            Current Width: ${hduData.width}
+            Current Height: ${hduData.height}
+            Data Length: ${hduData.data.length}`);
 
         if (useZScale) {
-            const zscaleResult = await this.calculateZScale(hduData.data, hduData.width, hduData.height);
+            // 确保使用当前切片的正确维度进行ZScale计算
+            const zscaleResult = await this.calculateZScale(
+                hduData.data,
+                hduData.width,
+                hduData.height
+            );
             low = zscaleResult.z1;
             high = zscaleResult.z2;
             console.log(`[FITSDataProcessor] ZScale Results:
                 Z1 (low): ${low}
                 Z2 (high): ${high}`);
         } else {
-            // 添加空值检查和实时计算逻辑
+            // 添加空值检查和实时计算逻辑，使用当前切片的数据
             if (hduData.stats?.min === undefined || hduData.stats?.max === undefined) {
-                console.log('[FITSDataProcessor] Stats not found, calculating...');
+                console.log('[FITSDataProcessor] Stats not found, calculating for current slice...');
                 const stats = await this.calculateDataStatistics(hduData.data);
                 low = stats.min;
                 high = stats.max;
-                console.log(`[FITSDataProcessor] Calculated Stats:
+                console.log(`[FITSDataProcessor] Calculated Stats for current slice:
                     Min: ${low}
                     Max: ${high}`);
             } else {
                 low = hduData.stats.min;
                 high = hduData.stats.max;
-                console.log(`[FITSDataProcessor] Using cached stats:
+                console.log(`[FITSDataProcessor] Using cached stats for current slice:
                     Min: ${low}
                     Max: ${high}`);
             }
         }
 
         // 记录归一化范围
-        console.log(`[FITSDataProcessor] Normalization range:
+        console.log(`[FITSDataProcessor] Normalization range for current slice:
             Low: ${low}
             High: ${high}`);
 
@@ -95,12 +103,13 @@ export class FITSDataProcessor {
         this.clipValues(transformedData);
 
         // 记录最终结果
-        console.log(`[FITSDataProcessor] Transform Results:
+        console.log(`[FITSDataProcessor] Transform Results for current slice:
             Output Min: 0
             Output Max: 1
-            Transform Type: ${scaleType}`);
+            Transform Type: ${scaleType}
+            Dimensions: ${hduData.width}x${hduData.height}`);
 
-        // 返回完整的HDUData对象
+        // 返回完整的HDUData对象，保持原始的维度信息
         return {
             type: hduData.type,
             width: hduData.width,

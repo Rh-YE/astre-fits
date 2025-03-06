@@ -71,6 +71,10 @@ Welcome to submit issue reports and feature suggestions to the project's GitHub 
 
 Version 1.0.0 of this project was completely developed using Cursor and its supported AI models including Claude 3.5 Sonet (primary), Claude 3.7 Sonet, Deepseek R1, and O3 mini. The author was responsible for supervision and testing, and properly used FITS definitions to constrain code writing. This development approach greatly improved development efficiency while ensuring code quality.
 
+## Contact
+
+renhaoye@shao.ac.cn
+
 ## License
 
 This project follows the GPL3.0 License.
