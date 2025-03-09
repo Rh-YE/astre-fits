@@ -1088,7 +1088,9 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
         useZScale: boolean,
         biasValue: number,
         contrastValue: number,
-        webviewPanel: vscode.WebviewPanel
+        webviewPanel: vscode.WebviewPanel,
+        channel?: number,
+        axesOrder?: number[]
     ): Promise<void> {
         try {
             this.logger.debug(`[FitsViewerProvider] Starting scale transform:
@@ -1097,6 +1099,8 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                 Use ZScale: ${useZScale}
                 Bias: ${biasValue}
                 Contrast: ${contrastValue}
+                Channel: ${channel !== undefined ? channel : 'not specified'}
+                Axes Order: ${axesOrder ? axesOrder.join(',') : 'not specified'}
             `);
 
             const currentHduIndex = this.currentHDUIndex.get(uri.toString()) || 0;
@@ -1123,6 +1127,8 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                 Height: ${hduData.height}
                 Depth: ${depth}
                 Slice size: ${sliceSize}
+                Channel: ${channel !== undefined ? channel : 0}
+                Axes Order: ${axesOrder ? axesOrder.join(',') : '[0,1,2]'}
             `);
 
             if (expectedDataLength !== actualDataLength) {
@@ -1130,6 +1136,28 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                     Expected: ${expectedDataLength}
                     Actual: ${actualDataLength}
                     This might indicate incorrect data reshaping or axis order issues.
+                `);
+            }
+
+            // 计算结果维度
+            let resultWidth = hduData.width;
+            let resultHeight = hduData.height;
+            
+            if (axesOrder && axesOrder.length === 3 && depth > 1) {
+                // 根据轴顺序确定结果维度
+                const dims = [depth, hduData.height, hduData.width];
+                const rowDimIndex = axesOrder[1];
+                const colDimIndex = axesOrder[2];
+                
+                resultWidth = dims[colDimIndex];
+                resultHeight = dims[rowDimIndex];
+                
+                this.logger.debug(`[FitsViewerProvider] Calculated dimensions based on axes order:
+                    Axes Order: [${axesOrder.join(', ')}]
+                    Row Dimension Index: ${rowDimIndex}
+                    Column Dimension Index: ${colDimIndex}
+                    Result Width: ${resultWidth}
+                    Result Height: ${resultHeight}
                 `);
             }
 
@@ -1142,7 +1170,9 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                 scaleType,
                 useZScale,
                 biasValue,
-                contrastValue
+                contrastValue,
+                channel !== undefined ? channel : 0,
+                axesOrder || [0, 1, 2]
             );
 
             if (!transformedData || !transformedData.width || !transformedData.height) {
@@ -1150,8 +1180,15 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
             }
 
             // 验证变换后的数据维度
-            const transformedExpectedLength = transformedData.width * transformedData.height * depth;
+            const transformedExpectedLength = transformedData.width * transformedData.height;
             const transformedActualLength = transformedData.data.length;
+
+            this.logger.debug(`[FitsViewerProvider] Transformed data validation:
+                Width: ${transformedData.width}
+                Height: ${transformedData.height}
+                Expected length (width * height): ${transformedExpectedLength}
+                Actual length: ${transformedActualLength}
+            `);
 
             if (transformedExpectedLength !== transformedActualLength) {
                 this.logger.warn(`[FitsViewerProvider] Transformed data dimension mismatch:
@@ -1159,30 +1196,32 @@ export class FitsViewerProvider implements vscode.CustomReadonlyEditorProvider, 
                     Actual: ${transformedActualLength}
                     This might indicate data corruption during transform.
                 `);
+                
+                // 尝试修复数据长度不匹配问题
+                if (transformedActualLength > 0) {
+                    this.logger.info(`[FitsViewerProvider] Attempting to fix dimension mismatch by using calculated dimensions`);
+                    
+                    // 使用计算出的维度，而不是变换后数据的维度
+                    transformedData.width = resultWidth;
+                    transformedData.height = resultHeight;
+                }
             }
-
-            // 创建包含深度信息的元数据
-            const metadata = {
-                width: transformedData.width,
-                height: transformedData.height,
-                depth: depth,
-                min: transformedData.stats.min,
-                max: transformedData.stats.max
-            };
 
             // 发送变换后的数据到WebView
             this.webviewService.postMessage(webviewPanel.webview, {
-                command: 'setImageData',
-                rawData: {
-                    data: Array.from(transformedData.data),
-                    ...metadata
-                }
+                command: 'scaleTransformResult',
+                data: Array.from(transformedData.data),
+                min: transformedData.stats.min,
+                max: transformedData.stats.max,
+                width: transformedData.width,
+                height: transformedData.height
             });
-
-        } catch (error) {
-            this.logger.error('Error applying scale transform:', error);
-            this.webviewService.sendLoadingMessage(webviewPanel.webview, 
-                `Failed to apply scale transform: ${error instanceof Error ? error.message : String(error)}`);
+        } catch (error: any) {
+            this.logger.error(`[FitsViewerProvider] Error applying scale transform: ${error.message}`, error);
+            this.webviewService.postMessage(webviewPanel.webview, {
+                command: 'scaleTransformResult',
+                error: error.message
+            });
         }
     }
 } 

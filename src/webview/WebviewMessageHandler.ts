@@ -14,7 +14,7 @@ export interface IWebviewMessageHandler {
     handleUpdateSpectrum(uri: vscode.Uri, wavelengthColumn: string, fluxColumn: string, webviewPanel: vscode.WebviewPanel): Promise<void>;
     handleShowTable(uri: vscode.Uri, webviewPanel: vscode.WebviewPanel): Promise<void>;
     handleReturnToSpectrum(uri: vscode.Uri, webviewPanel: vscode.WebviewPanel): Promise<void>;
-    handleApplyScaleTransform(uri: vscode.Uri, scaleType: string, useZScale: boolean, biasValue: number, contrastValue: number, webviewPanel: vscode.WebviewPanel): Promise<void>;
+    handleApplyScaleTransform(uri: vscode.Uri, scaleType: string, useZScale: boolean, biasValue: number, contrastValue: number, webviewPanel: vscode.WebviewPanel, channel?: number, axesOrder?: number[]): Promise<void>;
 }
 
 /**
@@ -81,7 +81,9 @@ export class WebviewMessageHandler {
                         message.useZScale,
                         message.biasValue,
                         message.contrastValue,
-                        webviewPanel
+                        webviewPanel,
+                        message.channel,
+                        message.axesOrder
                     );
                     break;
 

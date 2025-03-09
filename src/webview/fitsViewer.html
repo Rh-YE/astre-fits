@@ -281,19 +281,25 @@
                         // Activate current button | 激活当前按钮
                         button.classList.add('active');
                         
-                        // Get current transform type and range type | 获取当前变换类型和范围类型
-                        const transformButton = document.querySelector('.transform-group .scale-button.active');
-                        const rangeButton = document.querySelector('.range-group .scale-button.active');
-                        
-                        const scaleType = transformButton ? transformButton.getAttribute('data-scale') : 'linear';
-                        const useZScale = rangeButton ? rangeButton.getAttribute('data-scale') === 'zscale' : false;
-                        
-                        // Send scale transform message to extension | 发送缩放变换消息到扩展
-                        vscode.postMessage({
-                            command: 'applyScaleTransform',
-                            scaleType: scaleType,
-                            useZScale: useZScale
-                        });
+                        // 使用imageViewer的本地变换方法
+                        if (imageViewer && imageViewer.applyCurrentTransformToSlice) {
+                            imageViewer.applyCurrentTransformToSlice();
+                        } else {
+                            // 如果imageViewer不可用，则回退到发送消息到扩展
+                            // Get current transform type and range type | 获取当前变换类型和范围类型
+                            const transformButton = document.querySelector('.transform-group .scale-button.active');
+                            const rangeButton = document.querySelector('.range-group .scale-button.active');
+                            
+                            const scaleType = transformButton ? transformButton.getAttribute('data-scale') : 'linear';
+                            const useZScale = rangeButton ? rangeButton.getAttribute('data-scale') === 'zscale' : false;
+                            
+                            // Send scale transform message to extension | 发送缩放变换消息到扩展
+                            vscode.postMessage({
+                                command: 'applyScaleTransform',
+                                scaleType: scaleType,
+                                useZScale: useZScale
+                            });
+                        }
                     });
                 });
                 
@@ -444,12 +450,12 @@
                             
                         case 'scaleTransformResult':
                             if (message.data) {
-                                imageViewer.updateImageData(message.data, message.min, message.max);
+                                imageViewer.updateImageData(message.data, message.min, message.max, message.width, message.height);
                             } else {
                                 document.getElementById('fits-canvas').style.display = 'none';
                                 const imagePlaceholder = document.getElementById('image-placeholder');
                                 imagePlaceholder.style.display = 'block';
-                                imagePlaceholder.textContent = 'Cannot apply scale transform';
+                                imagePlaceholder.textContent = message.error || 'Cannot apply scale transform';
                             }
                             break;
                             

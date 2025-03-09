@@ -112,7 +112,8 @@ class ImageViewer {
                 this.useZScale = false;
                 this.minmaxButton.classList.add('active');
                 this.zscaleButton.classList.remove('active');
-                this.updateDisplay();
+                // 使用本地变换而不是发送到后端
+                this.applyCurrentTransformToSlice();
             });
         }
         
@@ -121,7 +122,8 @@ class ImageViewer {
                 this.useZScale = true;
                 this.zscaleButton.classList.add('active');
                 this.minmaxButton.classList.remove('active');
-                this.updateDisplay();
+                // 使用本地变换而不是发送到后端
+                this.applyCurrentTransformToSlice();
             });
         }
         
@@ -131,7 +133,8 @@ class ImageViewer {
                 this.scaleTypeButtons.forEach(btn => btn.classList.remove('active'));
                 button.classList.add('active');
                 this.currentScaleType = button.dataset.scaleType;
-                this.updateDisplay();
+                // 使用本地变换而不是发送到后端
+                this.applyCurrentTransformToSlice();
             });
         });
     }
@@ -309,6 +312,16 @@ class ImageViewer {
         // Extract new slice with updated dimensions | 提取新的切片并更新尺寸
         const slice2D = this.extract2DSlice(this.originalImageData, this.currentChannel, this.currentAxesOrder);
         
+        // 保存原始切片数据，用于后续变换
+        this.rawSliceData = {
+            data: new Float32Array(slice2D.data),
+            width: slice2D.width,
+            height: slice2D.height,
+            depth: slice2D.depth,
+            min: slice2D.min,
+            max: slice2D.max
+        };
+        
         // Update current image data | 更新当前图像数据
         this.currentImageData = slice2D;
 
@@ -338,8 +351,9 @@ class ImageViewer {
         this.currentChannel = parseInt(this.channelSlider.value);
         this.channelValue.textContent = `${this.currentChannel}/${this.maxChannel}`;
         this.updateSliceAndFit();
-        // 添加这行来触发缩放变换的重新应用
-        this.updateDisplay();
+        
+        // 在切片更新后应用当前变换
+        this.applyCurrentTransformToSlice();
     }
     
     handleAxesOrderChange() {
@@ -348,8 +362,110 @@ class ImageViewer {
         
         this.resetChannelSlider();
         this.updateSliceAndFit();
-        // 添加这行来触发缩放变换的重新应用
-        this.updateDisplay();
+        
+        // 不再调用updateDisplay，避免重复处理
+        // 而是直接应用当前的变换到已经提取的切片
+        this.applyCurrentTransformToSlice();
+    }
+    
+    // 应用当前变换到已提取的切片
+    applyCurrentTransformToSlice() {
+        if (!this.rawSliceData) {
+            console.warn('[ImageViewer] No raw slice data available for transform');
+            return;
+        }
+        
+        // 获取当前变换类型和范围类型
+        const transformButton = document.querySelector('.transform-group .scale-button.active');
+        const rangeButton = document.querySelector('.range-group .scale-button.active');
+        
+        // 获取变换类型和zscale标志
+        const scaleType = transformButton ? transformButton.getAttribute('data-scale') : 'linear';
+        const useZScale = rangeButton ? rangeButton.getAttribute('data-scale') === 'zscale' : false;
+        
+        console.log(`[ImageViewer] Applying current transform to slice:
+            Scale Type: ${scaleType}
+            Use ZScale: ${useZScale}
+            Bias: ${this.biasValue}
+            Contrast: ${this.contrastValue}
+            Current Axes Order: [${this.currentAxesOrder.join(', ')}]
+            Raw Slice Dimensions: ${this.rawSliceData.width}x${this.rawSliceData.height}
+            Raw Slice Data Length: ${this.rawSliceData.data.length}
+        `);
+        
+        // 直接在前端应用变换，而不是发送到后端
+        this.applyTransformLocally(this.rawSliceData, scaleType, useZScale, this.biasValue, this.contrastValue);
+    }
+    
+    // 新增方法：在前端本地应用变换
+    applyTransformLocally(imageData, scaleType, useZScale, biasValue, contrastValue) {
+        if (!imageData || !imageData.data) return;
+        
+        try {
+            console.log(`[ImageViewer] Applying transform locally:
+                Scale Type: ${scaleType}
+                Use ZScale: ${useZScale}
+                Bias: ${biasValue}
+                Contrast: ${contrastValue}
+                Image dimensions: ${imageData.width}x${imageData.height}
+                Data length: ${imageData.data.length}
+            `);
+            
+            // 创建变换后的数据数组
+            const transformedData = new Float32Array(imageData.data.length);
+            
+            // 计算数据范围
+            let min = imageData.min;
+            let max = imageData.max;
+            
+            // 应用偏差和对比度
+            const range = max - min;
+            const center = min + range * biasValue;
+            const width = range * contrastValue;
+            const low = center - width / 2;
+            const high = center + width / 2;
+            
+            // 归一化和应用变换
+            for (let i = 0; i < imageData.data.length; i++) {
+                // 归一化到[0,1]范围
+                let value = (imageData.data[i] - low) / (high - low);
+                value = Math.max(0, Math.min(1, value)); // 裁剪到[0,1]
+                
+                // 应用非线性变换
+                if (scaleType === 'log') {
+                    value = value <= 0 ? 0 : Math.log10(value * 9 + 1);
+                } else if (scaleType === 'sqrt') {
+                    value = Math.sqrt(value);
+                } else if (scaleType === 'squared') {
+                    value = value * value;
+                } else if (scaleType === 'asinh') {
+                    value = Math.asinh(value * 10) / 3;
+                }
+                
+                transformedData[i] = value;
+            }
+            
+            // 更新图像数据，保持原始维度
+            this.currentImageData = {
+                data: transformedData,
+                width: imageData.width,
+                height: imageData.height,
+                depth: imageData.depth,
+                min: 0,
+                max: 1
+            };
+            
+            console.log(`[ImageViewer] Transform applied locally:
+                Result dimensions: ${this.currentImageData.width}x${this.currentImageData.height}
+                Result data length: ${this.currentImageData.data.length}
+            `);
+            
+            // 重新渲染图像
+            this.renderWithTransform();
+            
+        } catch (error) {
+            console.error(`[ImageViewer] Error applying transform locally: ${error.message}`, error);
+        }
     }
     
     // Reset channel slider | 重置通道滑块
@@ -379,20 +495,6 @@ class ImageViewer {
         this.channelValue.textContent = `${this.currentChannel}/${this.maxChannel}`;
     }
     
-    // Update channel display | 更新通道显示
-    updateChannelDisplay() {
-        if (!this.originalImageData) return;
-        
-        // Extract current channel's 2D slice | 提取当前通道的2D切片
-        const slice2D = this.extract2DSlice(this.originalImageData, this.currentChannel, this.currentAxesOrder);
-        
-        // Update current image data | 更新当前图像数据
-        this.currentImageData = slice2D;
-        
-        // Re-render image | 重新渲染图像
-        this.renderWithTransform();
-    }
-    
     // Extract 2D slice from 3D data | 从3D数据中提取2D切片
     extract2DSlice(data3D, channel, axesOrder) {
         if (!data3D || !data3D.data3D) return data3D;
@@ -415,7 +517,11 @@ class ImageViewer {
             data3D.height || 1,
             data3D.width || 1
         ];
-
+        console.log(`[ImageViewer] Dimensions:
+            Depth: ${data3D.depth}
+            Height: ${data3D.height}
+            Width: ${data3D.width}
+        `);
         console.log(`[ImageViewer] Dimension mapping:
             Channel dimension (${channelDimIndex}): ${dims[channelDimIndex]}
             Row dimension (${rowDimIndex}): ${dims[rowDimIndex]}
@@ -443,45 +549,44 @@ class ImageViewer {
 
         // Calculate strides for each dimension | 计算每个维度的步长
         const strides = [
-            dims[1] * dims[2],  // stride for depth
-            dims[2],            // stride for height
-            1                   // stride for width
+            data3D.height * data3D.width,  // stride for depth (z)
+            data3D.width,                  // stride for height (y)
+            1                              // stride for width (x)
         ];
 
-        // Reorder strides based on axes order | 根据轴顺序重新排列步长
-        const orderedStrides = [
-            strides[channelDimIndex],
-            strides[rowDimIndex],
-            strides[colDimIndex]
-        ];
-
-        console.log(`[ImageViewer] Strides:
-            Original strides: [${strides.join(', ')}]
-            Ordered strides: [${orderedStrides.join(', ')}]
-            Channel stride: ${orderedStrides[0]}
-            Row stride: ${orderedStrides[1]}
-            Column stride: ${orderedStrides[2]}
-        `);
+        console.log(`[ImageViewer] Original strides: [${strides.join(', ')}]`);
 
         // Extract 2D slice | 提取2D切片
         for (let y = 0; y < resultHeight; y++) {
             for (let x = 0; x < resultWidth; x++) {
-                // Calculate source index | 计算源数据索引
+                // 根据轴顺序计算原始数据中的索引
+                // 首先确定在每个维度上的坐标
+                const coords = [0, 0, 0]; // [z, y, x]
+                coords[channelDimIndex] = channel;
+                coords[rowDimIndex] = y;
+                coords[colDimIndex] = x;
+                
+                // 使用坐标和步长计算原始数据中的索引
                 const sourceIndex = 
-                    channel * orderedStrides[0] +
-                    y * orderedStrides[1] +
-                    x * orderedStrides[2];
+                    coords[0] * strides[0] + 
+                    coords[1] * strides[1] + 
+                    coords[2] * strides[2];
 
                 // Calculate destination index | 计算目标数据索引
                 const destIndex = y * resultWidth + x;
 
                 // Copy data and update min/max | 复制数据并更新最小/最大值
-                const value = data3D.data3D[sourceIndex];
-                result.data[destIndex] = value;
-                
-                if (isFinite(value)) {
-                    result.min = Math.min(result.min, value);
-                    result.max = Math.max(result.max, value);
+                if (sourceIndex < data3D.data3D.length) {
+                    const value = data3D.data3D[sourceIndex];
+                    result.data[destIndex] = value;
+                    
+                    if (isFinite(value)) {
+                        result.min = Math.min(result.min, value);
+                        result.max = Math.max(result.max, value);
+                    }
+                } else {
+                    console.warn(`[ImageViewer] Source index out of bounds: ${sourceIndex} >= ${data3D.data3D.length}`);
+                    result.data[destIndex] = 0; // 使用默认值
                 }
             }
         }
@@ -668,6 +773,9 @@ class ImageViewer {
         if (this.originalImageData) {
             this.originalImageData = null;
         }
+        if (this.rawSliceData) {
+            this.rawSliceData = null;
+        }
 
         if (!rawData || !rawData.data || !rawData.width || !rawData.height) {
             log('Invalid image data | 图像数据无效');
@@ -705,7 +813,16 @@ class ImageViewer {
             // 更新通道相关UI
             this.maxChannel = Math.max(0, rawData.depth - 1);
             this.channelSlider.max = this.maxChannel;
+            this.currentChannel = 0;
+            this.channelSlider.value = this.currentChannel;
             this.channelValue.textContent = `${this.currentChannel}/${this.maxChannel}`;
+            
+            // 更新轴顺序选择器
+            if (this.axesOrderSelector) {
+                // 默认使用CHW顺序
+                this.currentAxesOrder = [0, 1, 2];
+                this.axesOrderSelector.value = this.currentAxesOrder.join(',');
+            }
             
             // Save original multi-dimensional data | 保存原始多维数据
             this.originalImageData = {
@@ -720,19 +837,11 @@ class ImageViewer {
             // Show channel selector | 显示通道选择器
             document.getElementById('channel-selector-container').style.display = 'block';
             
-            // Ensure axes order selector value matches currentAxesOrder | 确保轴顺序选择器的值与currentAxesOrder一致
-            if (this.axesOrderSelector.value !== this.currentAxesOrder.join(',')) {
-                this.axesOrderSelector.value = this.currentAxesOrder.join(',');
-            }
+            // Extract initial slice | 提取初始切片
+            this.updateSliceAndFit();
             
-            // Reset channel slider | 重置通道滑块
-            this.resetChannelSlider();
-            
-            // Extract first channel's 2D slice | 提取第一个通道的2D切片
-            const slice2D = this.extract2DSlice(this.originalImageData, this.currentChannel, this.currentAxesOrder);
-            
-            // Update current image data | 更新当前图像数据
-            this.currentImageData = slice2D;
+            // 应用当前变换到切片
+            this.applyCurrentTransformToSlice();
         } else {
             // Hide channel selector | 隐藏通道选择器
             document.getElementById('channel-selector-container').style.display = 'none';
@@ -748,6 +857,18 @@ class ImageViewer {
                 min: rawData.min,
                 max: rawData.max
             };
+            
+            // 保存原始切片数据，用于后续变换
+            this.rawSliceData = {
+                data: new Float32Array(this.currentImageData.data),
+                width: this.currentImageData.width,
+                height: this.currentImageData.height,
+                min: this.currentImageData.min,
+                max: this.currentImageData.max
+            };
+            
+            // 应用当前变换到切片
+            this.applyCurrentTransformToSlice();
         }
         
         // Show Canvas, hide placeholder | 显示Canvas，隐藏占位符
@@ -861,15 +982,21 @@ class ImageViewer {
     // Handle bias slider input | 处理偏差滑块输入
     handleBiasSliderInput() {
         this.biasValue = parseFloat(this.biasSlider.value);
+        this.biasValue = Math.max(0, Math.min(1, this.biasValue));
         this.biasValueDisplay.textContent = this.biasValue.toFixed(2);
-        this.updateDisplay();
+        
+        // 使用本地变换而不是发送到后端
+        this.applyCurrentTransformToSlice();
     }
     
     // Handle contrast slider input | 处理对比度滑块输入
     handleContrastSliderInput() {
         this.contrastValue = parseFloat(this.contrastSlider.value);
-        this.contrastValueDisplay.textContent = this.contrastValue.toFixed(1);
-        this.updateDisplay();
+        this.contrastValue = Math.max(0.1, Math.min(10, this.contrastValue));
+        this.contrastValueDisplay.textContent = this.contrastValue.toFixed(2);
+        
+        // 使用本地变换而不是发送到后端
+        this.applyCurrentTransformToSlice();
     }
     
     // Apply bias and contrast to pixel value | 对像素值应用偏差和对比度
@@ -902,14 +1029,31 @@ class ImageViewer {
             const scaleType = transformButton ? transformButton.getAttribute('data-scale') : 'linear';
             const useZScale = rangeButton ? rangeButton.getAttribute('data-scale') === 'zscale' : false;
 
-            // Send message to extension to apply scale transform | 发送消息到扩展应用缩放变换
+            console.log(`[ImageViewer] Applying transform:
+                Scale Type: ${scaleType}
+                Use ZScale: ${useZScale}
+                Bias: ${this.biasValue}
+                Contrast: ${this.contrastValue}
+                Channel: ${this.currentChannel}
+                Axes Order: [${this.currentAxesOrder.join(', ')}]
+            `);
+
+            // 使用本地变换而不是发送到后端
+            // 这样可以确保保持当前的轴顺序
+            if (this.rawSliceData) {
+                this.applyTransformLocally(this.rawSliceData, scaleType, useZScale, this.biasValue, this.contrastValue);
+                return;
+            }
+
+            // 如果没有原始切片数据，则发送到后端（兼容旧代码）
             vscode.postMessage({
                 command: 'applyScaleTransform',
                 scaleType: scaleType,
                 useZScale: useZScale,
                 biasValue: this.biasValue,
                 contrastValue: this.contrastValue,
-                channel: this.currentChannel  // 添加当前通道信息
+                channel: this.currentChannel,
+                axesOrder: this.currentAxesOrder
             });
         } catch (error) {
             console.error(`[ImageViewer] Error in updateDisplay: ${error.message}`, error);
@@ -917,29 +1061,48 @@ class ImageViewer {
     }
 
     // Update image data | 更新图像数据
-    updateImageData(data, min, max) {
+    updateImageData(data, min, max, width, height) {
         if (!data) {
             console.error('[ImageViewer] Received null data in updateImageData');
             return;
         }
 
+        // 如果提供了宽度和高度，使用提供的值；否则使用当前值
+        const imageWidth = width || (this.currentImageData ? this.currentImageData.width : null);
+        const imageHeight = height || (this.currentImageData ? this.currentImageData.height : null);
+
+        if (!imageWidth || !imageHeight) {
+            console.error('[ImageViewer] Missing width or height in updateImageData');
+            return;
+        }
+
         console.log(`[ImageViewer] Updating image data:
             Data length: ${data.length}
-            Current image width: ${this.currentImageData.width}
-            Current image height: ${this.currentImageData.height}
-            Current image depth: ${this.currentImageData.depth || 'N/A'}
+            Width: ${imageWidth}
+            Height: ${imageHeight}
+            Depth: ${this.currentImageData ? this.currentImageData.depth || 'N/A' : 'N/A'}
             New min: ${min}
             New max: ${max}
             First 5 values: ${data.slice(0, 5)}
             Last 5 values: ${data.slice(-5)}
+            Expected size: ${imageWidth * imageHeight}
         `);
+
+        // 验证数据长度
+        if (data.length !== imageWidth * imageHeight) {
+            console.warn(`[ImageViewer] Data length mismatch:
+                Expected: ${imageWidth * imageHeight}
+                Actual: ${data.length}
+                This might cause display issues.
+            `);
+        }
 
         // Update current image data | 更新当前图像数据
         this.currentImageData = {
             data: data,
-            width: this.currentImageData.width,
-            height: this.currentImageData.height,
-            depth: this.currentImageData.depth,
+            width: imageWidth,
+            height: imageHeight,
+            depth: this.currentImageData ? this.currentImageData.depth : 1,
             min: min,
             max: max
         };
