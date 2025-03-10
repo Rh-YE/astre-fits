@@ -307,65 +307,128 @@ class ImageViewer {
     
     // Update slice and fit to container | 更新切片并适应容器
     updateSliceAndFit() {
-        if (!this.originalImageData) return;
+        if (!this.originalImageData || !this.originalImageData.data3D) {
+            console.warn('[ImageViewer] No original 3D data available for slice extraction');
+            return;
+        }
         
-        // Extract new slice with updated dimensions | 提取新的切片并更新尺寸
-        const slice2D = this.extract2DSlice(this.originalImageData, this.currentChannel, this.currentAxesOrder);
+        // 提取当前切片
+        const sliceResult = this.extract2DSlice(
+            this.originalImageData.data3D,
+            this.currentChannel,
+            this.currentAxesOrder
+        );
+        
+        if (!sliceResult) {
+            console.error('[ImageViewer] Failed to extract 2D slice');
+            return;
+        }
+        
+        // 计算切片的最小值和最大值
+        let min = Infinity;
+        let max = -Infinity;
+        
+        for (let i = 0; i < sliceResult.data.length; i++) {
+            const value = sliceResult.data[i];
+            if (!isNaN(value)) {
+                min = Math.min(min, value);
+                max = Math.max(max, value);
+            }
+        }
+        
+        // 如果min和max相等，稍微调整max以避免除以零
+        if (min === max) {
+            max = min + 1;
+        }
         
         // 保存原始切片数据，用于后续变换
         this.rawSliceData = {
-            data: new Float32Array(slice2D.data),
-            width: slice2D.width,
-            height: slice2D.height,
-            depth: slice2D.depth,
-            min: slice2D.min,
-            max: slice2D.max
+            data: sliceResult.data,
+            width: sliceResult.width,
+            height: sliceResult.height,
+            min: min,
+            max: max
         };
         
-        // Update current image data | 更新当前图像数据
-        this.currentImageData = slice2D;
-
-        // Get container dimensions | 获取容器尺寸
+        // 更新当前图像数据
+        this.currentImageData = {
+            data: new Float32Array(sliceResult.data),
+            width: sliceResult.width,
+            height: sliceResult.height,
+            min: min,
+            max: max
+        };
+        
+        console.log(`[ImageViewer] Updated slice:
+            Channel: ${this.currentChannel}
+            Axes Order: [${this.currentAxesOrder.join(', ')}]
+            Dimensions: ${this.rawSliceData.width}x${this.rawSliceData.height}
+            Data Range: ${this.rawSliceData.min} to ${this.rawSliceData.max}
+        `);
+        
+        // 更新通道值显示
+        if (this.channelValue) {
+            this.channelValue.textContent = `${this.currentChannel}/${this.maxChannel}`;
+        }
+        
+        // 获取容器尺寸
         const container = this.imageContainer;
         const containerWidth = container.clientWidth;
         const containerHeight = container.clientHeight;
 
-        // Calculate new zoom level to fit container | 计算新的缩放级别以适应容器
-        const scaleX = containerWidth / slice2D.width;
-        const scaleY = containerHeight / slice2D.height;
+        // 计算新的缩放级别以适应容器
+        const scaleX = containerWidth / sliceResult.width;
+        const scaleY = containerHeight / sliceResult.height;
         this.zoomLevel = Math.min(scaleX, scaleY) * 0.95;
         
-        // Center the image | 居中图像
-        this.panOffsetX = (containerWidth - slice2D.width * this.zoomLevel) / 2;
-        this.panOffsetY = (containerHeight - slice2D.height * this.zoomLevel) / 2;
+        // 居中图像
+        this.panOffsetX = (containerWidth - sliceResult.width * this.zoomLevel) / 2;
+        this.panOffsetY = (containerHeight - sliceResult.height * this.zoomLevel) / 2;
 
-        // Update zoom indicator | 更新缩放指示器
+        // 更新缩放指示器
         showZoomIndicator(this.zoomIndicator, this.zoomLevel);
         
-        // Re-render image | 重新渲染图像
-        this.renderWithTransform();
+        // 更新图像坐标显示
+        document.getElementById('image-coords-x').textContent = '-';
+        document.getElementById('image-coords-y').textContent = '-';
     }
 
     // Handle channel slider input | 处理通道滑块输入
     handleChannelSliderInput() {
-        this.currentChannel = parseInt(this.channelSlider.value);
-        this.channelValue.textContent = `${this.currentChannel}/${this.maxChannel}`;
-        this.updateSliceAndFit();
+        if (!this.channelSlider) return;
         
-        // 在切片更新后应用当前变换
-        this.applyCurrentTransformToSlice();
+        // Get new channel value | 获取新的通道值
+        const newChannel = parseInt(this.channelSlider.value);
+        
+        // Update channel if changed | 如果通道变化，则更新
+        if (newChannel !== this.currentChannel) {
+            this.currentChannel = newChannel;
+            
+            // Update slice and fit | 更新切片并适应
+            this.updateSliceAndFit();
+            
+            // Apply current transform to slice | 应用当前变换到切片
+            this.applyCurrentTransformToSlice();
+        }
     }
     
+    // Handle axes order change | 处理轴顺序变化
     handleAxesOrderChange() {
-        this.currentAxesOrder = this.axesOrderSelector.value.split(',').map(Number);
-        log(`轴顺序已更改为: ${this.currentAxesOrder}`);
+        if (!this.axesOrderSelector) return;
         
-        this.resetChannelSlider();
-        this.updateSliceAndFit();
+        // Get new axes order | 获取新的轴顺序
+        const newAxesOrder = this.axesOrderSelector.value.split(',').map(Number);
         
-        // 不再调用updateDisplay，避免重复处理
-        // 而是直接应用当前的变换到已经提取的切片
-        this.applyCurrentTransformToSlice();
+        // Update axes order if changed | 如果轴顺序变化，则更新
+        if (newAxesOrder.join(',') !== this.currentAxesOrder.join(',')) {
+            this.currentAxesOrder = newAxesOrder;
+            
+            // Update slice and fit | 更新切片并适应
+            this.updateSliceAndFit();
+            
+            // Apply current transform to slice | 应用当前变换到切片
+            this.applyCurrentTransformToSlice();
+        }
     }
     
     // 应用当前变换到已提取的切片
@@ -418,6 +481,17 @@ class ImageViewer {
             let min = imageData.min;
             let max = imageData.max;
             
+            // 如果使用zscale，计算zscale范围
+            if (useZScale) {
+                // 计算zscale范围
+                const zscaleResult = this.calculateZScale(imageData.data);
+                if (zscaleResult) {
+                    min = zscaleResult.z1;
+                    max = zscaleResult.z2;
+                    console.log(`[ImageViewer] Using ZScale range: ${min} to ${max}`);
+                }
+            }
+            
             // 应用偏差和对比度
             const range = max - min;
             const center = min + range * biasValue;
@@ -440,6 +514,13 @@ class ImageViewer {
                     value = value * value;
                 } else if (scaleType === 'asinh') {
                     value = Math.asinh(value * 10) / 3;
+                } else if (scaleType === 'sinh') {
+                    value = Math.sinh(value * 3) / 10;
+                } else if (scaleType === 'power') {
+                    value = Math.pow(value, 2.5);
+                } else if (scaleType === 'histogram') {
+                    // 直方图均衡化在前端实现较复杂，这里简化处理
+                    value = Math.pow(value, 0.5);
                 }
                 
                 transformedData[i] = value;
@@ -465,6 +546,126 @@ class ImageViewer {
             
         } catch (error) {
             console.error(`[ImageViewer] Error applying transform locally: ${error.message}`, error);
+        }
+    }
+    
+    // 添加计算ZScale的方法
+    calculateZScale(data, contrast = 0.25, iterations = 5) {
+        try {
+            if (!data || data.length === 0) return null;
+            
+            // 常量
+            const ZSMAX_REJECT = 0.5;
+            const ZSMIN_NPIXELS = 5;
+            const ZSMAX_ITERATIONS = iterations || 5;
+            
+            // 采样
+            const width = this.rawSliceData.width;
+            const height = this.rawSliceData.height;
+            const numPerLine = 120;
+            const numSamples = 600;
+            
+            const strideY = Math.max(2, Math.floor(height / numPerLine));
+            const strideX = Math.max(2, Math.floor(width / numPerLine));
+            
+            // 创建采样数组
+            const samples = [];
+            for (let y = 0; y < height; y += strideY) {
+                for (let x = 0; x < width; x += strideX) {
+                    const value = data[y * width + x];
+                    if (isFinite(value)) {
+                        samples.push(value);
+                    }
+                }
+            }
+            
+            if (samples.length === 0) {
+                return { z1: data[0], z2: data[0] };
+            }
+            
+            // 排序采样
+            samples.sort((a, b) => a - b);
+            
+            // 计算中值
+            const npix = samples.length;
+            const centerPixel = Math.max(1, Math.floor((npix + 1) / 2));
+            const median = npix % 2 === 1 || centerPixel >= npix ?
+                samples[centerPixel - 1] :
+                (samples[centerPixel - 1] + samples[centerPixel]) / 2.0;
+            
+            // 拟合直线
+            const minPixels = Math.max(ZSMIN_NPIXELS, Math.floor(npix * ZSMAX_REJECT));
+            const xscale = npix - 1;
+            let ngoodpix = npix;
+            let slope = 0;
+            let intercept = median;
+            
+            // 迭代拟合
+            for (let niter = 0; niter < ZSMAX_ITERATIONS; niter++) {
+                if (ngoodpix < minPixels) {
+                    return { z1: samples[0], z2: samples[samples.length - 1] };
+                }
+                
+                // 最小二乘拟合
+                let sumx = 0, sumy = 0, sumxy = 0, sumxx = 0;
+                for (let i = 0; i < ngoodpix; i++) {
+                    const x = i / xscale;
+                    const y = samples[i];
+                    sumx += x;
+                    sumy += y;
+                    sumxy += x * y;
+                    sumxx += x * x;
+                }
+                
+                const denominator = ngoodpix * sumxx - sumx * sumx;
+                if (denominator !== 0) {
+                    slope = (ngoodpix * sumxy - sumx * sumy) / denominator;
+                    intercept = (sumy * sumxx - sumx * sumxy) / denominator;
+                }
+                
+                // 计算残差
+                let sigma = 0;
+                const residuals = [];
+                for (let i = 0; i < ngoodpix; i++) {
+                    const x = i / xscale;
+                    const fitted = x * slope + intercept;
+                    const residual = samples[i] - fitted;
+                    residuals.push(residual);
+                    sigma += residual * residual;
+                }
+                sigma = Math.sqrt(sigma / ngoodpix);
+                
+                // 剔除离群点
+                const newSamples = [];
+                for (let i = 0; i < ngoodpix; i++) {
+                    if (Math.abs(residuals[i]) < sigma * 2.5) {
+                        newSamples.push(samples[i]);
+                    }
+                }
+                
+                if (newSamples.length === ngoodpix) {
+                    break;
+                }
+                
+                samples.length = 0;
+                samples.push(...newSamples);
+                ngoodpix = newSamples.length;
+            }
+            
+            // 计算显示范围
+            if (contrast > 0) {
+                slope = slope / contrast;
+            }
+            
+            const z1 = Math.max(samples[0], median - (centerPixel - 1) * slope);
+            const z2 = Math.min(samples[samples.length - 1], median + (npix - centerPixel) * slope);
+            
+            console.log(`[ImageViewer] ZScale calculation result: z1=${z1}, z2=${z2}`);
+            return { z1, z2 };
+            
+        } catch (error) {
+            console.error(`[ImageViewer] Error calculating ZScale: ${error.message}`, error);
+            return null;
         }
     }
     
@@ -497,109 +698,152 @@ class ImageViewer {
     
     // Extract 2D slice from 3D data | 从3D数据中提取2D切片
     extract2DSlice(data3D, channel, axesOrder) {
-        if (!data3D || !data3D.data3D) return data3D;
-
-        console.log(`[ImageViewer] Starting 2D slice extraction:
-            Input dimensions: depth=${data3D.depth}, height=${data3D.height}, width=${data3D.width}
-            Channel: ${channel}
-            Axes Order: [${axesOrder.join(', ')}]
-            Original data length: ${data3D.data3D.length}
-            First 5 values of original data: ${data3D.data3D.slice(0, 5)}
-        `);
-        
-        const channelDimIndex = axesOrder[0];  // 通道维度索引
-        const rowDimIndex = axesOrder[1];      // 行维度索引
-        const colDimIndex = axesOrder[2];      // 列维度索引
-        
-        // Get dimensions sizes | 获取各维度大小
-        const dims = [
-            data3D.depth || 1,
-            data3D.height || 1,
-            data3D.width || 1
-        ];
-        console.log(`[ImageViewer] Dimensions:
-            Depth: ${data3D.depth}
-            Height: ${data3D.height}
-            Width: ${data3D.width}
-        `);
-        console.log(`[ImageViewer] Dimension mapping:
-            Channel dimension (${channelDimIndex}): ${dims[channelDimIndex]}
-            Row dimension (${rowDimIndex}): ${dims[rowDimIndex]}
-            Column dimension (${colDimIndex}): ${dims[colDimIndex]}
-        `);
-        
-        // Calculate result 2D slice dimensions | 计算结果2D切片的尺寸
-        const resultWidth = dims[colDimIndex];
-        const resultHeight = dims[rowDimIndex];
-
-        console.log(`[ImageViewer] Output dimensions:
-            Result width: ${resultWidth}
-            Result height: ${resultHeight}
-            Expected output size: ${resultWidth * resultHeight}
-        `);
-        
-        // Create result data | 创建结果数据
-        const result = {
-            data: new Float32Array(resultWidth * resultHeight),
-            width: resultWidth,
-            height: resultHeight,
-            min: Infinity,
-            max: -Infinity
-        };
-
-        // Calculate strides for each dimension | 计算每个维度的步长
-        const strides = [
-            data3D.height * data3D.width,  // stride for depth (z)
-            data3D.width,                  // stride for height (y)
-            1                              // stride for width (x)
-        ];
-
-        console.log(`[ImageViewer] Original strides: [${strides.join(', ')}]`);
-
-        // Extract 2D slice | 提取2D切片
-        for (let y = 0; y < resultHeight; y++) {
-            for (let x = 0; x < resultWidth; x++) {
-                // 根据轴顺序计算原始数据中的索引
-                // 首先确定在每个维度上的坐标
-                const coords = [0, 0, 0]; // [z, y, x]
-                coords[channelDimIndex] = channel;
-                coords[rowDimIndex] = y;
-                coords[colDimIndex] = x;
-                
-                // 使用坐标和步长计算原始数据中的索引
-                const sourceIndex = 
-                    coords[0] * strides[0] + 
-                    coords[1] * strides[1] + 
-                    coords[2] * strides[2];
-
-                // Calculate destination index | 计算目标数据索引
-                const destIndex = y * resultWidth + x;
-
-                // Copy data and update min/max | 复制数据并更新最小/最大值
-                if (sourceIndex < data3D.data3D.length) {
-                    const value = data3D.data3D[sourceIndex];
-                    result.data[destIndex] = value;
-                    
-                    if (isFinite(value)) {
-                        result.min = Math.min(result.min, value);
-                        result.max = Math.max(result.max, value);
-                    }
+        try {
+            if (!data3D || !this.originalImageData) {
+                console.error('[ImageViewer] No 3D data available for slice extraction');
+                return null;
+            }
+            
+            const width = this.originalImageData.width;
+            const height = this.originalImageData.height;
+            const depth = this.originalImageData.depth;
+            
+            if (!width || !height || !depth) {
+                console.error('[ImageViewer] Invalid dimensions for 3D data');
+                return null;
+            }
+            
+            console.log(`[ImageViewer] Extracting 2D slice:
+                Channel: ${channel}
+                Axes Order: [${axesOrder.join(', ')}]
+                Original Dimensions: ${width}x${height}x${depth}
+                Data Length: ${data3D.length}
+            `);
+            
+            // 确保通道索引在有效范围内
+            const validChannel = Math.max(0, Math.min(depth - 1, channel));
+            
+            // 根据轴顺序确定切片维度
+            let sliceWidth, sliceHeight;
+            let widthAxis, heightAxis, depthAxis;
+            
+            // 解析轴顺序
+            if (axesOrder && axesOrder.length === 3) {
+                depthAxis = axesOrder[0];  // 通道/深度轴
+                heightAxis = axesOrder[1]; // 高度轴
+                widthAxis = axesOrder[2];  // 宽度轴
+            } else {
+                // 默认CHW顺序
+                depthAxis = 0;
+                heightAxis = 1;
+                widthAxis = 2;
+            }
+            
+            // 根据轴顺序确定切片维度
+            if (depthAxis === 0) {
+                if (heightAxis === 1 && widthAxis === 2) {
+                    // CHW顺序
+                    sliceWidth = width;
+                    sliceHeight = height;
                 } else {
-                    console.warn(`[ImageViewer] Source index out of bounds: ${sourceIndex} >= ${data3D.data3D.length}`);
-                    result.data[destIndex] = 0; // 使用默认值
+                    // CWH顺序
+                    sliceWidth = height;
+                    sliceHeight = width;
+                }
+            } else if (depthAxis === 1) {
+                if (heightAxis === 0 && widthAxis === 2) {
+                    // HCW顺序
+                    sliceWidth = width;
+                    sliceHeight = depth;
+                } else {
+                    // HWC顺序
+                    sliceWidth = depth;
+                    sliceHeight = width;
+                }
+            } else {
+                if (heightAxis === 0 && widthAxis === 1) {
+                    // WCH顺序
+                    sliceWidth = depth;
+                    sliceHeight = height;
+                } else {
+                    // WHC顺序
+                    sliceWidth = height;
+                    sliceHeight = depth;
                 }
             }
+            
+            // 创建2D切片数据
+            const slice2D = new Float32Array(sliceWidth * sliceHeight);
+            
+            // 填充切片数据
+            for (let y = 0; y < sliceHeight; y++) {
+                for (let x = 0; x < sliceWidth; x++) {
+                    // 根据轴顺序计算3D索引
+                    let i, j, k;
+                    
+                    if (depthAxis === 0) {
+                        i = validChannel;
+                        if (heightAxis === 1 && widthAxis === 2) {
+                            // CHW
+                            j = y;
+                            k = x;
+                        } else {
+                            // CWH
+                            j = x;
+                            k = y;
+                        }
+                    } else if (depthAxis === 1) {
+                        j = validChannel;
+                        if (heightAxis === 0 && widthAxis === 2) {
+                            // HCW
+                            i = y;
+                            k = x;
+                        } else {
+                            // HWC
+                            i = y;
+                            k = x;
+                        }
+                    } else {
+                        k = validChannel;
+                        if (heightAxis === 0 && widthAxis === 1) {
+                            // WCH
+                            i = y;
+                            j = x;
+                        } else {
+                            // WHC
+                            i = x;
+                            j = y;
+                        }
+                    }
+                    
+                    // 计算3D数据中的索引
+                    const index3D = i * (height * width) + j * width + k;
+                    
+                    // 计算2D切片中的索引
+                    const index2D = y * sliceWidth + x;
+                    
+                    // 复制数据
+                    if (index3D >= 0 && index3D < data3D.length) {
+                        slice2D[index2D] = data3D[index3D];
+                    }
+                }
+            }
+            
+            console.log(`[ImageViewer] 2D slice extracted:
+                Slice Dimensions: ${sliceWidth}x${sliceHeight}
+                Slice Data Length: ${slice2D.length}
+            `);
+            
+            return {
+                data: slice2D,
+                width: sliceWidth,
+                height: sliceHeight
+            };
+            
+        } catch (error) {
+            console.error(`[ImageViewer] Error extracting 2D slice: ${error.message}`, error);
+            return null;
         }
-
-        console.log(`[ImageViewer] Slice extraction result:
-            Output dimensions: ${result.width}x${result.height}
-            Output data length: ${result.data.length}
-            First 5 values: ${result.data.slice(0, 5)}
-            Last 5 values: ${result.data.slice(-5)}
-            Value range: [${result.min}, ${result.max}]
-        `);
-        
-        return result;
     }
     
     // Render image with transform | 使用变换渲染图像
