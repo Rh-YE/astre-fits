@@ -1,9 +1,9 @@
 # Change Log
 
-## [0.0.8]: March 6, 2025
+## [0.0.8]: March 10, 2025
 
 - Fix: channel index change will refresh image now 
-<!-- - Fix bugs: Change Axes from [1,2,3] to [1,3,2] -->
+- Fix bugs: When you change axes it can correctly apply scale function, normalization and bias/contrast
 
 ## [0.0.7]: March 6, 2025
 
